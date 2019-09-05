@@ -103,7 +103,10 @@ vector<t_lexeme> lex(const string& source) {
             vector<string> keywords = {
                 "int", "return", "if", "else", "while", "for", "do",
                 "continue", "break", "struct", "float",
-                "char", "unsigned"
+                "char", "unsigned", "void", "auto", "case", "const",
+                "default", "double", "enum", "extern", "goto", "long",
+                "register", "short", "signed", "sizeof", "static", "struct",
+                "switch", "typedef", "union", "volatile"
             };
             if (has(keywords, val)) {
                 push("keyword", val);

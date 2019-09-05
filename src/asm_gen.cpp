@@ -155,7 +155,9 @@ namespace {
 
         string get_asm_type(const t_type& t) {
             string res;
-            if (t == char_type) {
+            if (t == unsigned_long_type) {
+                res = "i64";
+            } else if (t == char_type) {
                 res = "i8";
             } else if (t == int_type) {
                 res = "i32";
@@ -164,7 +166,7 @@ namespace {
             } else if (t == double_type) {
                 res = "double";
             } else if (t == void_pointer_type) {
-                res += "i64";
+                res += "i8*";
             } else if (is_pointer_type(t)) {
                 res += get_asm_type(pointer_get_referenced_type(t));
                 res += "*";
@@ -308,10 +310,15 @@ namespace {
     auto gen_conversion(const t_type& t, const t_exp_value& v, t_ctx& ctx) {
         t_exp_value res;
         if (not equal(t, v.type)) {
-            cout << "conv " << t.uu << " " << v.type.uu << "\n";
             res.type = t;
             res.value = make_new_id();
-            if (t == double_type and v.type == float_type) {
+            if (is_integral_type(v.type) and is_pointer_type(t)) {
+                a(res.value + " = inttoptr " + ctx.make_asm_arg(v)
+                  + " to " + ctx.get_asm_type(t));
+            } else if (is_pointer_type(t) and is_pointer_type(v.type)) {
+                a(res.value + " = bitcast " + ctx.make_asm_arg(v)
+                  + " to " + ctx.get_asm_type(t));
+            } else if (t == double_type and v.type == float_type) {
                 a(res.value + " = fpext " + ctx.make_asm_arg(v)
                   + " to double");
             } else if (t == float_type and v.type == double_type) {
@@ -323,11 +330,11 @@ namespace {
             } else if (t == double_type and v.type == int_type) {
                 a(res.value + " = sitofp " + ctx.make_asm_arg(v)
                   + " to double");
-            } else if (t == void_pointer_type and v.type == int_type) {
+            } else if (t == unsigned_long_type and v.type == int_type) {
                 a(res.value + " = sext " + ctx.make_asm_arg(v)
                   + " to i64");
             } else {
-                err("unknown conversion", v.type.loc);
+                throw runtime_error("unknown conversion");
             }
         } else {
             res = v;
@@ -473,7 +480,7 @@ namespace {
                    and is_integral_type(y.type)) {
             auto v = make_new_id();
             auto t = ctx.get_asm_type(pointer_get_referenced_type(x.type));
-            y = gen_conversion(void_pointer_type, y, ctx);
+            y = gen_conversion(unsigned_long_type, y, ctx);
             a(v + " =  getelementptr inbounds " + t
               + ", " + ctx.make_asm_arg(x) + ", " + ctx.make_asm_arg(y));
             res.value = v;

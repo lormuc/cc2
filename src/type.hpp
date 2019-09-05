@@ -37,12 +37,12 @@ bool equal(const t_type&, const t_type&);
 
 const auto signed_char_type = t_type("signed char");
 const auto unsigned_char_type = t_type("unsigned char");
-const auto short_int_type = t_type("short int");
-const auto unsigned_short_int_type = t_type("unsigned short int");
+const auto short_type = t_type("short int");
+const auto unsigned_short_type = t_type("unsigned short int");
 const auto int_type = t_type("int");
-const auto unsigned_int_type = t_type("unsigned int");
-const auto long_int_type = t_type("long int");
-const auto unsigned_long_int_type = t_type("unsigned long int");
+const auto unsigned_type = t_type("unsigned int");
+const auto long_type = t_type("long int");
+const auto unsigned_long_type = t_type("unsigned long int");
 const auto char_type = t_type("char");
 const auto float_type = t_type("float");
 const auto double_type = t_type("double");
