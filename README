@@ -1,0 +1,9 @@
+Build
+    make
+
+Run
+    ./build/program input.c llvm.ll
+    lli llvm.ll
+
+Test
+    python3.7 test.py tests/
