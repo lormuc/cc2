@@ -464,8 +464,29 @@ namespace {
         return res;
     }
 
-    auto initializer() {
-        return assign_exp();
+    t_ast initializer() {
+        auto loc = peek().loc;
+        t_ast res;
+        if (cmp("{")) {
+            res.uu = "initializer";
+            advance();
+            while (true) {
+                res.add_child(initializer());
+                if (not cmp(",")) {
+                    break;
+                }
+                advance();
+                if (cmp("}")) {
+                    break;
+                }
+            }
+            pop("}");
+        } else {
+            res.uu = "initializer_single_exp";
+            res.add_child(assign_exp());
+        }
+        res.loc = loc;
+        return res;
     }
 
     auto init_declarator() {

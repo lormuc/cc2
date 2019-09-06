@@ -59,7 +59,11 @@ size_t struct_get_member_idx(const t_type& t, const string& id) {
     return res;
 }
 
-t_type struct_get_member_type(const t_type& t, size_t i) {
+const t_type& struct_get_member_type(const t_type& t, size_t i) {
+    return t[i][0];
+}
+
+t_type& struct_get_member_type(t_type& t, size_t i) {
     return t[i][0];
 }
 
@@ -67,7 +71,11 @@ bool struct_is_complete(const t_type& t) {
     return t.children.size() != 0;
 }
 
-t_type array_get_element_type(const t_type& t) {
+const t_type& array_get_element_type(const t_type& t) {
+    return t[0];
+}
+
+t_type& array_get_element_type(t_type& t) {
     return t[0];
 }
 
@@ -88,11 +96,22 @@ bool is_struct_type(const t_type& t) {
 }
 
 bool is_integral_type(const t_type& t) {
-    return t == int_type or t == char_type;
+    return t == char_type or t == signed_char_type or t == short_type
+        or t == int_type or t == long_type or t == unsigned_char_type
+        or t == unsigned_short_type or t == unsigned_type
+        or t == unsigned_long_type;
+}
+
+bool is_floating_type(const t_type& t) {
+    return t == double_type or t == float_type or t == long_double_type;
 }
 
 bool is_arithmetic_type(const t_type& t) {
-    return is_integral_type(t) or t == double_type or t == float_type;
+    return is_integral_type(t) or is_floating_type(t);
+}
+
+bool is_scalar_type(const t_type& t) {
+    return is_arithmetic_type(t) or is_pointer_type(t);
 }
 
 t_type pointer_get_referenced_type(const t_type& t) {

@@ -217,7 +217,11 @@ namespace {
             return res;
         }
 
-        auto complete_type(t_type& t) const {
+        void complete_type(t_type& t) const {
+            if (is_array_type(t)) {
+                complete_type(array_get_element_type(t));
+                return;
+            }
             if (not is_struct_type(t)) {
                 return;
             }
@@ -452,7 +456,7 @@ namespace {
         return res;
     }
 
-    auto gen_elt_adr(const t_exp_value& v, ull i, t_ctx& ctx) {
+    auto gen_array_elt(const t_exp_value& v, ull i, t_ctx& ctx) {
         t_exp_value res;
         res.value = make_new_id();
         auto len_str = to_string(array_get_length(v.type));
@@ -461,9 +465,10 @@ namespace {
         string s;
         s += res.value + " = getelementptr inbounds ";
         s += at + ", " + ctx.make_asm_arg(v);
-        s += ", i64 " + to_string(i) + ", i64 0";
+        s += ", i64 0, i64 " + to_string(i);
         a(s);
-        res.type = make_pointer_type(array_get_element_type(v.type));
+        res.type = array_get_element_type(v.type);
+        res.is_lvalue = true;
         return res;
     }
 
@@ -481,13 +486,34 @@ namespace {
             auto v = make_new_id();
             auto t = ctx.get_asm_type(pointer_get_referenced_type(x.type));
             y = gen_conversion(unsigned_long_type, y, ctx);
-            a(v + " =  getelementptr inbounds " + t
+            a(v + " = getelementptr inbounds " + t
               + ", " + ctx.make_asm_arg(x) + ", " + ctx.make_asm_arg(y));
             res.value = v;
             res.type = x.type;
         } else {
             err("bad operand types for +", ast[0].loc);
         }
+        return res;
+    }
+
+    auto gen_assign(const t_exp_value& lhs, const t_exp_value& rhs, t_ctx& ctx) {
+        a("store", ctx.make_asm_arg(rhs), ctx.make_asm_arg(lhs));
+        return lhs;
+    }
+
+    auto gen_convert_assign(const t_exp_value& lhs, const t_exp_value& rhs,
+                            t_ctx& ctx) {
+        return gen_assign(lhs, gen_conversion(lhs.type, rhs, ctx), ctx);
+    }
+
+    auto gen_struct_member(const t_exp_value& v, ull i, t_ctx& ctx) {
+        t_exp_value res;
+        res.type = struct_get_member_type(v.type, i);
+        res.value = make_new_id();
+        res.is_lvalue = true;
+        auto vt = ctx.get_asm_type(v.type);
+        a(res.value + " = getelementptr inbounds " + vt
+          + ", " + vt + "* " + v.value + ", i32 0, i32 " + to_string(i));
         return res;
     }
 
@@ -576,11 +602,9 @@ namespace {
             // a("lea", adr, "%rax");
         } else if (ast.uu == "bin_op") {
             if (ast.vv == "=") {
-                auto rhs = gen_exp(ast[1], ctx);
-                auto lhs = gen_exp(ast[0], ctx, false);
-                auto val = gen_conversion(lhs.type, rhs, ctx);
-                a("store", ctx.make_asm_arg(val), ctx.make_asm_arg(lhs));
-                res = val;
+                res = gen_convert_assign(gen_exp(ast[0], ctx, false),
+                                         gen_exp(ast[1], ctx),
+                                         ctx);
             } else {
                 if (ast.vv == "+") {
                     res = add(gen_exp(ast[0], ctx), gen_exp(ast[1], ctx), ctx);
@@ -655,11 +679,14 @@ namespace {
             a(res.value + " = getelementptr inbounds " + at
               + ", " + at + "* " + x.value + ", i32 0, i32 " + to_string(idx));
         } else if (ast.uu == "array_subscript") {
-            res = dereference(add(gen_exp(ast[0], ctx), gen_exp(ast[1], ctx), ctx));
+            res = dereference(add(gen_exp(ast[0], ctx),
+                                  gen_exp(ast[1], ctx), ctx));
         }
         if (convert_lvalue and res.is_lvalue) {
             if (res.type.uu == "array") {
-                res = gen_elt_adr(res, 0, ctx);
+                res = gen_array_elt(res, 0, ctx);
+                res.type = make_pointer_type(res.type);
+                res.is_lvalue = false;
             } else {
                 auto v = make_new_id();
                 res.type = res.type;
@@ -755,6 +782,24 @@ namespace {
         return res;
     }
 
+    void gen_init(const t_exp_value& v, const t_ast& ini, t_ctx& ctx) {
+        if (is_struct_type(v.type)) {
+            ull i = 0;
+            for (auto& c : v.type.children) {
+                gen_init(gen_struct_member(v, i, ctx), ini[i], ctx);
+                i++;
+            }
+        } else if (is_array_type(v.type)) {
+            ull i = 0;
+            while (i < ini.children.size()) {
+                gen_init(gen_array_elt(v, i, ctx), ini[i], ctx);
+                i++;
+            }
+        } else {
+            gen_convert_assign(v, gen_exp(ini[0], ctx), ctx);
+        }
+    }
+
     void gen_declaration(const t_ast& ast, t_ctx& ctx) {
         auto base = make_base_type(ast[0]);
         if (is_struct_type(base)) {
@@ -765,6 +810,32 @@ namespace {
             string id;
             unpack_declarator(type, id, ast[i][0]);
             ctx.define_var(id, type);
+            if (ast[i].children.size() > 1) {
+                auto& ini = ast[i][1];
+                auto v = t_exp_value{ctx.get_var_asm_var(id), type, true};
+                if (is_scalar_type(type)) {
+                    t_ast exp;
+                    if (ini.uu == "initializer_single_exp") {
+                        exp = ini[0];
+                    } else {
+                        if (ini[0].uu != "initializer_single_exp") {
+                            err("expected expresion, got initializer list",
+                                ini[0].loc);
+                        }
+                        exp = ini[0][0];
+                    }
+                    auto e = gen_exp(exp, ctx);
+                    gen_convert_assign(v, e, ctx);
+                } else {
+                    if (is_struct_type(type)
+                        and ini.uu == "initializer_single_exp") {
+                        gen_assign(v, gen_exp(ini[0], ctx), ctx);
+                    } else {
+                        ctx.complete_type(v.type);
+                        gen_init(v, ini, ctx);
+                    }
+                }
+            }
         }
     }
 
