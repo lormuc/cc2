@@ -39,55 +39,6 @@ void print(const t_ast& t, unsigned level = 0) {
     }
 }
 
-// string stringify(const t_type& type, string identifier = "") {
-//     string res;
-//     if (type.get_kind() == "basic_type") {
-//         res += type.get_basic_type_kind();
-//         if (identifier != "") {
-//             res += " ";
-//             res += identifier;
-//         }
-//     } else if (type.get_kind() == "function") {
-//         res += stringify(type.get_function_return_type());
-//         res += " (";
-//         res += identifier;
-//         res += ")(";
-//         auto params = type.get_function_parameters();
-//         if (not params.empty()) {
-//             auto initial = true;
-//             for (auto& p : params) {
-//                 if (not initial) {
-//                     res += ", ";
-//                 }
-//                 res += stringify(p);
-//                 initial = false;
-//             }
-//         }
-//         res += ")";
-//     } else if (type.get_kind() == "pointer") {
-//         auto new_id = string("*") + identifier;
-//         res += stringify(type.get_referenced_type(), new_id);
-//     } else if (type.get_kind() == "array") {
-//         auto len = type.get_array_length();
-//         string len_str;
-//         if (len != array_unknown_length) {
-//             len_str += to_string(len);
-//         }
-//         if (identifier != "") {
-//             identifier = string("(") + identifier + ")";
-//         }
-//         auto new_id = identifier + "[" + len_str + "]";
-//         res += stringify(type.get_array_element_type(), new_id);
-//     }
-//     return res;
-// }
-
-auto t_ptr(auto x) {
-    return t_type("pointer", x);
-}
-
-const auto t_int = t_type("int");
-
 auto delete_comments(const string& str) {
     string res;
     auto i = size_t(0);
@@ -143,20 +94,6 @@ auto preprocess(const string& str) {
 }
 
 int main(int argc, char** argv) {
-    // auto f = ifstream("test/1.c");
-    // auto s = read_file_into_string(f);
-    // auto res = preprocess(delete_comments(s));
-    // cout << res << "--------------\n";
-    // return 0;
-
-    // auto z = t_type(string("int"));
-    // auto y = z;
-    // t_type x(t_ptr(t_int), {t_ptr(t_type(t_int, {t_int})), t_int, t_ptr(t_int)});
-    // x = t_type(x, array_unknown_length);
-    // x = t_ptr(x);
-    // cout << stringify(x, "xxx") << "\n";
-    // return 0;
-
     if (argc != 3) {
         cerr << "error : bad argument list\n";
         return 1;

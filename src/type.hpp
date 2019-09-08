@@ -3,54 +3,131 @@
 #include <vector>
 #include <string>
 
-#include "ast.hpp"
 #include "misc.hpp"
 
-typedef t_ast t_type;
+enum class t_type_kind {
+    _char,
+    _s_char,
+    _u_char,
+    _short,
+    _u_short,
+    _int,
+    _u_int,
+    _long,
+    _u_long,
+    _float,
+    _double,
+    _long_double,
+    _void,
+    _array,
+    _pointer,
+    _struct,
+    _union,
+    _function,
+    _enum,
+};
+
+class t_type;
+
+class t_type_ptr {
+    t_type* ptr;
+    void init(const t_type* p);
+public:
+    t_type_ptr(const t_type* p = nullptr) {
+        init(p);
+    }
+    t_type_ptr(const t_type_ptr& x) {
+        init(x.ptr);
+    }
+    t_type_ptr& operator=(const t_type_ptr& x);
+    ~t_type_ptr();
+    const t_type& operator*() const {
+        return *ptr;
+    }
+    bool operator==(const t_type_ptr& x) const;
+    bool operator==(nullptr_t) const {
+        return ptr == nullptr;
+    }
+};
+
+class t_struct_member;
+
+class t_type {
+    t_type_kind kind;
+    bool _const = false;
+    bool _volatile = false;
+    t_type_ptr subtype;
+    std::string name;
+    // array
+    unsigned array_length = -1;
+    // struct or union
+    std::vector<t_struct_member> members;
+    // function
+    std::vector<t_type> params;
+public:
+    t_type() {}
+    t_type(t_type_kind, const t_type&, unsigned);
+    t_type(t_type_kind, const t_type&);
+    t_type(t_type_kind, const std::string&);
+    t_type(t_type_kind, const std::string&,
+           const std::vector<t_struct_member>&);
+    t_type(t_type_kind, const t_type&, const std::vector<t_type>&);
+    t_type(t_type_kind);
+    bool is_const() const;
+    bool is_volatile() const;
+    t_type_kind get_kind() const;
+    const t_type& get_return_type() const;
+    const t_type& get_pointee_type() const;
+    const t_type& get_element_type() const;
+    unsigned get_length() const;
+    unsigned get_member_index(const std::string&) const;
+    t_type get_member_type(unsigned i) const;
+    bool is_complete() const;
+    const std::string& get_name() const;
+    const std::vector<t_struct_member>& get_members() const;
+    const std::vector<t_type>& get_params() const;
+    bool operator==(const t_type&) const;
+};
 
 struct t_struct_member {
     std::string id;
     t_type type;
+    bool operator==(const t_struct_member& x) const {
+        return id == x.id and type == x.type;
+    }
 };
 
+t_type make_function_type(const t_type&, const std::vector<t_type>&);
 t_type make_basic_type(const std::string&);
 t_type make_pointer_type(const t_type&);
-t_type pointer_get_referenced_type(const t_type&);
 t_type make_array_type(const t_type&);
-t_type make_array_type(const t_type&, ull);
-const t_type& array_get_element_type(const t_type&);
-t_type& array_get_element_type(t_type&);
-ull array_get_length(const t_type&);
-bool is_array_type(const t_type&);
-bool is_pointer_type(const t_type&);
-bool is_arithmetic_type(const t_type&);
-bool is_integral_type(const t_type&);
-bool is_floating_type(const t_type&);
-bool is_scalar_type(const t_type&);
-bool struct_is_complete(const t_type&);
-size_t struct_get_member_idx(const t_type&, const std::string&);
-t_type& struct_get_member_type(t_type&, size_t);
-const t_type& struct_get_member_type(const t_type&, size_t);
-std::string struct_get_name(const t_type&);
-std::vector<t_struct_member> struct_get_members(const t_type&);
+t_type make_array_type(const t_type&, unsigned);
 t_type make_struct_type(const std::string&,
                         const std::vector<t_struct_member>&);
 t_type make_struct_type(const std::string&);
+bool is_array_type(const t_type&);
+bool is_function_type(const t_type&);
 bool is_struct_type(const t_type&);
-bool equal(const t_type&, const t_type&);
+bool is_pointer_type(const t_type&);
+bool is_integral_type(const t_type&);
+bool is_floating_type(const t_type&);
+bool is_arithmetic_type(const t_type&);
+bool is_scalar_type(const t_type&);
+bool compatible(const t_type&, const t_type&);
+std::string stringify(const t_type&, std::string id = "");
 
-const auto signed_char_type = t_type("signed char");
-const auto unsigned_char_type = t_type("unsigned char");
-const auto short_type = t_type("short int");
-const auto unsigned_short_type = t_type("unsigned short int");
-const auto int_type = t_type("int");
-const auto unsigned_type = t_type("unsigned int");
-const auto long_type = t_type("long int");
-const auto unsigned_long_type = t_type("unsigned long int");
-const auto char_type = t_type("char");
-const auto float_type = t_type("float");
-const auto double_type = t_type("double");
-const auto long_double_type = t_type("long double");
-const auto void_type = t_type("void");
-const auto string_type = make_pointer_type(char_type);
-const auto void_pointer_type = make_pointer_type(void_type);
+extern const t_type char_type;
+extern const t_type s_char_type;
+extern const t_type u_char_type;
+extern const t_type short_type;
+extern const t_type u_short_type;
+extern const t_type int_type;
+extern const t_type u_int_type;
+extern const t_type long_type;
+extern const t_type u_long_type;
+extern const t_type float_type;
+extern const t_type double_type;
+extern const t_type long_double_type;
+extern const t_type void_type;
+extern const t_type string_type;
+extern const t_type void_pointer_type;

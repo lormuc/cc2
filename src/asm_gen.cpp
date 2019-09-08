@@ -155,7 +155,7 @@ namespace {
 
         string get_asm_type(const t_type& t) {
             string res;
-            if (t == unsigned_long_type) {
+            if (t == u_long_type) {
                 res = "i64";
             } else if (t == char_type) {
                 res = "i8";
@@ -168,15 +168,15 @@ namespace {
             } else if (t == void_pointer_type) {
                 res += "i8*";
             } else if (is_pointer_type(t)) {
-                res += get_asm_type(pointer_get_referenced_type(t));
+                res += get_asm_type(t.get_pointee_type());
                 res += "*";
             } else if (is_array_type(t)) {
                 res += "[";
-                res += to_string(array_get_length(t)) + " x ";
-                res += get_asm_type(array_get_element_type(t));
+                res += to_string(t.get_length()) + " x ";
+                res += get_asm_type(t.get_element_type());
                 res += "]";
             } else if (is_struct_type(t)) {
-                res += type_map.get_asm_var(struct_get_name(t));
+                res += type_map.get_asm_var(t.get_name());
             }
             return res;
         }
@@ -184,18 +184,18 @@ namespace {
         string define_struct(t_type type) {
             assert(is_struct_type(type));
             auto res = make_new_id();
-            auto& id = type.vv;
+            auto& id = type.get_name();
             if (type_map.map.count(id) != 0) {
-                if (not struct_is_complete(type_map.map[id].type)) {
+                if (not type_map.map[id].type.is_complete()) {
                     type_map.map[id].type = type;
                     res = type_map.map[id].asm_var;
-                } else if (struct_is_complete(type)) {
+                } else if (type.is_complete()) {
                     throw runtime_error("struct redefinition");
                 }
             } else {
                 type_map.map[id] = {type, res};
             }
-            auto mm = struct_get_members(type);
+            auto& mm = type.get_members();
             if (not mm.empty()) {
                 string asm_type_def;
                 asm_type_def += res + " = type { ";
@@ -205,7 +205,7 @@ namespace {
                         asm_type_def += ", ";
                     }
                     start = false;
-                    if (is_struct_type(m.type) and struct_is_complete(m.type)) {
+                    if (is_struct_type(m.type) and m.type.is_complete()) {
                         asm_type_def += define_struct(m.type);
                     } else {
                         asm_type_def += get_asm_type(m.type);
@@ -217,24 +217,26 @@ namespace {
             return res;
         }
 
-        void complete_type(t_type& t) const {
+        t_type complete_type(const t_type& t) const {
             if (is_array_type(t)) {
-                complete_type(array_get_element_type(t));
-                return;
+                auto et = complete_type(t.get_element_type());
+                return make_array_type(et, t.get_length());
             }
             if (not is_struct_type(t)) {
-                return;
+                return t;
             }
-            if (not struct_is_complete(t)) {
-                t = type_map.get_type(t.vv);
+            if (not t.is_complete()) {
+                return type_map.get_type(t.get_name());
             }
-            for (auto& m : t.children) {
-                complete_type(m[0]);
+            auto mm = t.get_members();
+            for (auto& m : mm) {
+                m.type = complete_type(m.type);
             }
+            return make_struct_type(t.get_name(), mm);
         }
 
         auto define_var(const string& id, t_type type) {
-            complete_type(type);
+            type = complete_type(type);
             var_map.map[id] = {type, make_new_id()};
             a(var_map.map[id].asm_var + " = alloca " + get_asm_type(type));
         }
@@ -287,19 +289,6 @@ namespace {
         asm_funcs += l.substr(1) + ":\n";
     }
 
-    unsigned get_size(const t_ast& type) {
-        if (type.uu == "array") {
-            auto arr_size_exp =  type.children[1];
-            // if (arr_size_exp.uu != "constant") {
-            //     throw_ln("bad array size");
-            // }
-            auto arr_size = unsigned(stoul(arr_size_exp.vv));
-            return get_size(type.children[0]) * arr_size;
-        } else {
-            return 8u;
-        }
-    }
-
     string make_new_id() {
         static ull aux_var_cnt = 0;
         aux_var_cnt++;
@@ -313,7 +302,7 @@ namespace {
 
     auto gen_conversion(const t_type& t, const t_exp_value& v, t_ctx& ctx) {
         t_exp_value res;
-        if (not equal(t, v.type)) {
+        if (not compatible(t, v.type)) {
             res.type = t;
             res.value = make_new_id();
             if (is_integral_type(v.type) and is_pointer_type(t)) {
@@ -334,7 +323,7 @@ namespace {
             } else if (t == double_type and v.type == int_type) {
                 a(res.value + " = sitofp " + ctx.make_asm_arg(v)
                   + " to double");
-            } else if (t == unsigned_long_type and v.type == int_type) {
+            } else if (t == u_long_type and v.type == int_type) {
                 a(res.value + " = sext " + ctx.make_asm_arg(v)
                   + " to i64");
             } else {
@@ -459,15 +448,15 @@ namespace {
     auto gen_array_elt(const t_exp_value& v, ull i, t_ctx& ctx) {
         t_exp_value res;
         res.value = make_new_id();
-        auto len_str = to_string(array_get_length(v.type));
-        auto elt_type = ctx.get_asm_type(array_get_element_type(v.type));
+        auto len_str = to_string(v.type.get_length());
+        auto elt_type = ctx.get_asm_type(v.type.get_element_type());
         auto at = string() + "[" + len_str + " x " + elt_type + "]";
         string s;
         s += res.value + " = getelementptr inbounds ";
         s += at + ", " + ctx.make_asm_arg(v);
         s += ", i64 0, i64 " + to_string(i);
         a(s);
-        res.type = array_get_element_type(v.type);
+        res.type = v.type.get_element_type();
         res.is_lvalue = true;
         return res;
     }
@@ -484,8 +473,8 @@ namespace {
         } else if (is_pointer_type(x.type)
                    and is_integral_type(y.type)) {
             auto v = make_new_id();
-            auto t = ctx.get_asm_type(pointer_get_referenced_type(x.type));
-            y = gen_conversion(unsigned_long_type, y, ctx);
+            auto t = ctx.get_asm_type(x.type.get_pointee_type());
+            y = gen_conversion(u_long_type, y, ctx);
             a(v + " = getelementptr inbounds " + t
               + ", " + ctx.make_asm_arg(x) + ", " + ctx.make_asm_arg(y));
             res.value = v;
@@ -508,7 +497,7 @@ namespace {
 
     auto gen_struct_member(const t_exp_value& v, ull i, t_ctx& ctx) {
         t_exp_value res;
-        res.type = struct_get_member_type(v.type, i);
+        res.type = v.type.get_member_type(i);
         res.value = make_new_id();
         res.is_lvalue = true;
         auto vt = ctx.get_asm_type(v.type);
@@ -518,14 +507,10 @@ namespace {
     }
 
     auto dereference(const t_exp_value& v) {
-        t_exp_value res;
-        res = v;
-        if (not is_pointer_type(res.type)) {
+        if (not is_pointer_type(v.type)) {
             err("* operand is not a pointer", ast.loc);
         }
-        res.type = pointer_get_referenced_type(res.type);
-        res.is_lvalue = true;
-        return res;
+        return t_exp_value{v.value, v.type.get_pointee_type(), true};
     }
 
     t_exp_value gen_exp(const t_ast& ast, t_ctx& ctx,
@@ -541,11 +526,11 @@ namespace {
                 res.type = make_pointer_type(res.type);
                 res.is_lvalue = false;
             } else if (ast.vv == "*") {
-                res = dereference(gen_exp(ast[0], ctx));
-                // auto type = gen_exp(ast.children[0], var_map);
-                // if (type.uu != "pointer") {
-                //     throw_ln("* operand not a pointer");
-                // }
+                auto e = gen_exp(ast[0], ctx);
+                if (not is_pointer_type(e.type)) {
+                    err("* operand is not a pointer", ast.loc);
+                }
+                res = dereference(e);
             } else if (ast.vv == "-") {
                 auto x = gen_exp(ast[0], ctx);
                 res.value = make_new_id();
@@ -590,16 +575,12 @@ namespace {
             res.is_lvalue = true;
         } else if (ast.uu == "identifier") {
             auto& id = ast.vv;
+            if (not ctx.has_var(id)) {
+                err("unknown identifier", ast.loc);
+            }
             res.value += ctx.get_var_asm_var(id);
             res.type = ctx.get_var_type(id);
             res.is_lvalue = true;
-            // auto& var_name = ast.vv;
-            // if (not var_map.contains(var_name)) {
-            //     throw_ln("undeclared identifier");
-            // }
-            // res_type = get_var_type(var_name);
-            // auto adr = var_map.get_var_adr(var_name);
-            // a("lea", adr, "%rax");
         } else if (ast.uu == "bin_op") {
             if (ast.vv == "=") {
                 res = gen_convert_assign(gen_exp(ast[0], ctx, false),
@@ -607,7 +588,9 @@ namespace {
                                          ctx);
             } else {
                 if (ast.vv == "+") {
-                    res = add(gen_exp(ast[0], ctx), gen_exp(ast[1], ctx), ctx);
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    res = add(x, y, ctx);
                 } else if (ast.vv == "*") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
@@ -663,17 +646,17 @@ namespace {
             if (not is_struct_type(x.type)) {
                 err("dot operand is not a struct", ast.loc);
             }
-            auto struct_name = struct_get_name(x.type);
+            auto struct_name = x.type.get_name();
             auto t = ctx.get_type(struct_name);
-            assert(struct_is_complete(t));
-            auto idx = struct_get_member_idx(t, member_id);
-            if (idx == size_t(-1)) {
+            assert(t.is_complete());
+            auto idx = t.get_member_index(member_id);
+            if (is_invalid_value(idx)) {
                 err("struct has no such member", ast[1].loc);
             }
             if (x.is_lvalue) {
                 res.is_lvalue = true;
             }
-            res.type = struct_get_member_type(t, idx);
+            res.type = t.get_member_type(idx);
             res.value = make_new_id();
             auto at = ctx.get_type_asm_var(struct_name);
             a(res.value + " = getelementptr inbounds " + at
@@ -681,15 +664,16 @@ namespace {
         } else if (ast.uu == "array_subscript") {
             res = dereference(add(gen_exp(ast[0], ctx),
                                   gen_exp(ast[1], ctx), ctx));
+        } else {
+            err("bad tree", ast.loc);
         }
         if (convert_lvalue and res.is_lvalue) {
-            if (res.type.uu == "array") {
+            if (is_array_type(res.type)) {
                 res = gen_array_elt(res, 0, ctx);
                 res.type = make_pointer_type(res.type);
                 res.is_lvalue = false;
             } else {
                 auto v = make_new_id();
-                res.type = res.type;
                 auto at = ctx.get_asm_type(res.type);
                 a(v + " = load " + at + ", " + at + "* " + res.value);
                 res.value = v;
@@ -785,7 +769,7 @@ namespace {
     void gen_init(const t_exp_value& v, const t_ast& ini, t_ctx& ctx) {
         if (is_struct_type(v.type)) {
             ull i = 0;
-            for (auto& c : v.type.children) {
+            for (auto& c : v.type.get_members()) {
                 gen_init(gen_struct_member(v, i, ctx), ini[i], ctx);
                 i++;
             }
@@ -831,7 +815,7 @@ namespace {
                         and ini.uu == "initializer_single_exp") {
                         gen_assign(v, gen_exp(ini[0], ctx), ctx);
                     } else {
-                        ctx.complete_type(v.type);
+                        v.type = ctx.complete_type(v.type);
                         gen_init(v, ini, ctx);
                     }
                 }

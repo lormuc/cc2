@@ -37,6 +37,10 @@ public:
 
 typedef unsigned long long ull;
 
+template<class t>
+bool is_invalid_value(t x) {
+    return x == t(-1);
+}
 std::string read_file_into_string(std::ifstream&);
 std::string print_bytes(const std::string&);
 void err(const std::string&, t_loc);
