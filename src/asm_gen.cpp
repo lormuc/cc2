@@ -13,9 +13,10 @@ using namespace std;
 
 namespace {
     string asm_funcs;
-    t_ast ast;
+    string func_body;
     string global_storage;
     string asm_type_defs;
+    string func_var_alloc;
 
     string make_new_id();
     ull eval_const_exp(const t_ast&);
@@ -56,19 +57,34 @@ namespace {
         return string("%l") + to_string(count);
     }
 
+    auto func_line(const string& x) {
+        return string("    ") + x + "\n";
+    }
+
     auto a(const string& s) {
-        asm_funcs += "    "; asm_funcs += s; asm_funcs += "\n";
+        func_body += func_line(s);
     }
 
     auto a(const string& s0, const string& s1) {
-        asm_funcs += "    "; asm_funcs += s0; asm_funcs += " ";
-        asm_funcs += s1; asm_funcs += "\n";
+        func_body += func_line(s0 + " " + s1);
     }
 
-    auto a(const string& x, const string& y, const string& z) {
-        asm_funcs += "    "; asm_funcs += x; asm_funcs += " ";
-        asm_funcs += y; asm_funcs += ", "; asm_funcs += z;
-        asm_funcs += "\n";
+    auto fun(const string& func_name, const t_exp_value& a0,
+             const t_exp_value& a1) {
+        return func_name + " " + a0.value + ", " + a1.value;
+    }
+
+    auto fun(const string& func_name, const string& a0,
+             const string& a1) {
+        return func_name + " " + a0 + ", " + a1;
+    }
+
+    auto let(const t_exp_value& v, const string& s) {
+        a(v.value + " = " + s);
+    }
+
+    auto let(const string& v, const string& s) {
+        a(v + " = " + s);
     }
 
     class t_ctx {
@@ -128,7 +144,24 @@ namespace {
         string loop_body_end;
         string loop_end;
         string func_name;
+        unordered_map<string, string> label_map;
     public:
+        void add_label(const t_ast& ast) {
+            auto it = label_map.find(ast.vv);
+            if (it != label_map.end()) {
+                err("label redefinition", ast.loc);
+            }
+            label_map[ast.vv] = make_label();
+        }
+
+        string get_asm_label(const t_ast& ast) {
+            auto it = label_map.find(ast.vv);
+            if (it == label_map.end()) {
+                err("undeclared label", ast.loc);
+            }
+            return (*it).second;
+        }
+
         auto set_loop_body_end(const string& x) {
             loop_body_end = x;
         }
@@ -238,7 +271,9 @@ namespace {
         auto define_var(const string& id, t_type type) {
             type = complete_type(type);
             var_map.map[id] = {type, make_new_id()};
-            a(var_map.map[id].asm_var + " = alloca " + get_asm_type(type));
+            func_var_alloc += func_line(var_map.map[id].asm_var
+                                        + " = alloca "
+                                        + get_asm_type(type));
         }
 
         auto can_define_type(const string& id) const {
@@ -286,7 +321,7 @@ namespace {
         if (f) {
             a("br label", l);
         }
-        asm_funcs += l.substr(1) + ":\n";
+        func_body += l.substr(1) + ":\n";
     }
 
     string make_new_id() {
@@ -295,9 +330,8 @@ namespace {
         return string("%_") + to_string(aux_var_cnt);
     }
 
-    void noop() {
-        asm_funcs += "    ";
-        asm_funcs += make_new_id() + " = add i1 0, 0\n";
+    auto noop() {
+        let(make_new_id(), fun("add i1", "0", "0"));
     }
 
     auto gen_conversion(const t_type& t, const t_exp_value& v, t_ctx& ctx) {
@@ -354,11 +388,11 @@ namespace {
         res.type = x.type;
         res.value = make_new_id();
         if (x.type == int_type) {
-            a(res.value + " = add nsw i32 " + x.value + ", " + y.value);
+            let(res, fun("add nsw i32", x, y));
         } else if (x.type == double_type) {
-            a(res.value + " = fadd double " + x.value + ", " + y.value);
+            let(res, fun("fadd double", x, y));
         } else if (x.type == float_type) {
-            a(res.value + " = fadd float " + x.value + ", " + y.value);
+            let(res, fun("fadd float", x, y));
         }
         return res;
     }
@@ -480,13 +514,13 @@ namespace {
             res.value = v;
             res.type = x.type;
         } else {
-            err("bad operand types for +", ast[0].loc);
+            throw runtime_error("add error");
         }
         return res;
     }
 
     auto gen_assign(const t_exp_value& lhs, const t_exp_value& rhs, t_ctx& ctx) {
-        a("store", ctx.make_asm_arg(rhs), ctx.make_asm_arg(lhs));
+        a(fun("store", ctx.make_asm_arg(rhs), ctx.make_asm_arg(lhs)));
         return lhs;
     }
 
@@ -507,9 +541,6 @@ namespace {
     }
 
     auto dereference(const t_exp_value& v) {
-        if (not is_pointer_type(v.type)) {
-            err("* operand is not a pointer", ast.loc);
-        }
         return t_exp_value{v.value, v.type.get_pointee_type(), true};
     }
 
@@ -662,8 +693,11 @@ namespace {
             a(res.value + " = getelementptr inbounds " + at
               + ", " + at + "* " + x.value + ", i32 0, i32 " + to_string(idx));
         } else if (ast.uu == "array_subscript") {
-            res = dereference(add(gen_exp(ast[0], ctx),
-                                  gen_exp(ast[1], ctx), ctx));
+            auto z = add(gen_exp(ast[0], ctx), gen_exp(ast[1], ctx), ctx);
+            if (not is_pointer_type(z.type)) {
+                err("sum of arguments to [] is not a pointer", ast.loc);
+            }
+            res = dereference(z);
         } else {
             err("bad tree", ast.loc);
         }
@@ -910,6 +944,13 @@ namespace {
             put_label(nctx.get_loop_end());
         } else if (c.uu == "break") {
         } else if (c.uu == "continue") {
+        } else if (c.uu == "goto") {
+            gen_br(ctx.get_asm_label(c[0]));
+        } else if (c.uu == "label") {
+            put_label(ctx.get_asm_label(c));
+            gen_statement(c[0], ctx);
+        } else {
+            throw runtime_error("unknown statement type");
         }
     }
 
@@ -932,16 +973,31 @@ namespace {
         }
     }
 
+    void add_labels(const t_ast& ast, t_ctx& ctx) {
+        for (auto& c : ast.children) {
+            if (c.uu == "label") {
+                ctx.add_label(c);
+            } else if (c.uu == "compound_statement") {
+                add_labels(c, ctx);
+            }
+        }
+    }
+
     auto gen_function(const t_ast& ast) {
         auto& func_name = ast.vv;
         asm_funcs += "define i32 @"; asm_funcs += func_name;
         asm_funcs += "() {\n";
         t_ctx ctx;
         ctx.set_func_name(func_name);
+        add_labels(ast, ctx);
+        func_body = "";
+        func_var_alloc = "";
         for (auto& c : ast.children) {
             gen_block_item(c, ctx);
         }
         a("ret i32 0");
+        asm_funcs += func_var_alloc;
+        asm_funcs += func_body;
         asm_funcs += "}\n";
     }
 }

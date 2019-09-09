@@ -52,6 +52,10 @@ namespace {
         return peek().uu == name;
     }
 
+    auto cmp(const string& n0, const string& n1) {
+        return peek().uu == n0 and lexeme_list[idx+1].uu == n1;
+    }
+
     auto end() {
         return idx >= lexeme_list.size() or cmp("eof");
     }
@@ -565,19 +569,23 @@ namespace {
         auto value = peek().vv;
         t_ast res;
         if (kw("return")) {
-            advance();
-            auto child = exp();
-            pop(";");
             res.uu = "return";
-            res.children = {child};
+            advance();
+            res.add_child(exp());
+            pop(";");
         } else if (kw("break")) {
-            advance();
-            pop(";");
             res.uu = "break";
-        } else if (kw("continue")) {
             advance();
             pop(";");
+        } else if (kw("continue")) {
             res.uu = "continue";
+            advance();
+            pop(";");
+        } else if (kw("goto")) {
+            res.uu = "goto";
+            advance();
+            res.add_child(identifier());
+            pop(";");
         } else {
             err("expected jump statement", loc);
         }
@@ -617,7 +625,17 @@ namespace {
     }
 
     t_ast statement() {
-        if (cmp("{")) {
+        if (cmp("identifier", ":") ) {
+            auto loc = peek().loc;
+            t_ast res;
+            res.uu = "label";
+            res.vv = peek().vv;
+            advance();
+            advance();
+            res.add_child(statement());
+            res.loc = loc;
+            return res;
+        } else if (cmp("{")) {
             return compound_statement();
         } else if (cmp("keyword")) {
             auto v = peek().vv;
