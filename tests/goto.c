@@ -9,18 +9,23 @@ loop:
     printf("%d\n", i);
     goto l0;
     {
+        int z;
         {
             int z = 4;
             {
                 int y = 0;
             l0:
-                y = 9;
+                if (1) y = 9;
                 printf("%d\n", y);
             l1:
+                z = 1;
                 goto l2;
             }
         }
-    l2:
+        while (1 <= z) {
+        l2:
+            z = z - 1;
+        }
         goto l3;
     }
 l3:

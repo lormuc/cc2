@@ -974,12 +974,11 @@ namespace {
     }
 
     void add_labels(const t_ast& ast, t_ctx& ctx) {
+        if (ast.uu == "label") {
+            ctx.add_label(ast);
+        }
         for (auto& c : ast.children) {
-            if (c.uu == "label") {
-                ctx.add_label(c);
-            } else if (c.uu == "compound_statement") {
-                add_labels(c, ctx);
-            }
+            add_labels(c, ctx);
         }
     }
 
