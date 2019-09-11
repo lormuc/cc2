@@ -166,7 +166,7 @@ namespace {
             loop_body_end = x;
         }
 
-        auto get_loop_body_end() {
+        const auto& get_loop_body_end() {
             return loop_body_end;
         }
 
@@ -174,7 +174,7 @@ namespace {
             loop_end = x;
         }
 
-        auto get_loop_end() {
+        const auto& get_loop_end() {
             return loop_end;
         }
 
@@ -182,7 +182,7 @@ namespace {
             func_name = x;
         }
 
-        auto get_func_name() {
+        const auto& get_func_name() {
             return func_name;
         }
 
@@ -328,6 +328,22 @@ namespace {
         static ull aux_var_cnt = 0;
         aux_var_cnt++;
         return string("%_") + to_string(aux_var_cnt);
+    }
+
+    auto& unqualify(auto& x) {
+        return x;
+    }
+
+    auto is_modifiable_lvalue(auto& x) {
+        return true;
+    }
+
+    auto make_constant(const string& c, const t_type& t) {
+        if (c == "1" and is_floating_type(t)) {
+            return t_exp_value{c + ".0", t, false};
+        } else {
+            return t_exp_value{c, t, false};
+        }
     }
 
     auto noop() {
@@ -544,6 +560,16 @@ namespace {
         return t_exp_value{v.value, v.type.get_pointee_type(), true};
     }
 
+    auto convert_lvalue_to_rvalue(const t_exp_value& v, t_ctx& ctx) {
+        t_exp_value res;
+        res.value = make_new_id();
+        res.type = v.type;
+        auto at = ctx.get_asm_type(res.type);
+        a(res.value + " = load " + at + ", " + at + "* " + v.value);
+        res.is_lvalue = false;
+        return res;
+    }
+
     t_exp_value gen_exp(const t_ast& ast, t_ctx& ctx,
                         bool convert_lvalue = true) {
         t_exp_value res;
@@ -698,7 +724,16 @@ namespace {
                 err("sum of arguments to [] is not a pointer", ast.loc);
             }
             res = dereference(z);
-        } else {
+        } else if (ast.uu == "postfix_increment") {
+            auto e = gen_exp(ast[0], ctx, false);
+            res = convert_lvalue_to_rvalue(e, ctx);
+            if (not is_scalar_type(unqualify(res.type))
+                or not is_modifiable_lvalue(res.type)) {
+                err("cannot increment value of such type", ast[0].loc);
+            }
+            auto z = add(res, make_constant("1", res.type), ctx);
+            gen_assign(e, z, ctx);
+        } else{
             err("bad tree", ast.loc);
         }
         if (convert_lvalue and res.is_lvalue) {
@@ -707,11 +742,7 @@ namespace {
                 res.type = make_pointer_type(res.type);
                 res.is_lvalue = false;
             } else {
-                auto v = make_new_id();
-                auto at = ctx.get_asm_type(res.type);
-                a(v + " = load " + at + ", " + at + "* " + res.value);
-                res.value = v;
-                res.is_lvalue = false;
+                res = convert_lvalue_to_rvalue(res, ctx);
             }
         }
         return res;
@@ -871,6 +902,10 @@ namespace {
             auto cond_false = make_label();
             auto end = make_label();
             auto cond_val = gen_exp(c.children[0], ctx);
+            if (not is_scalar_type(cond_val.type)) {
+                err("controlling expression must have scalar type",
+                    c.children[0].loc);
+            }
             auto cmp_res = make_new_id();
             a(cmp_res + " = icmp eq i32 0, " + cond_val.value);
             a(string("br i1 ") + cmp_res + ", label " + cond_false
@@ -913,6 +948,20 @@ namespace {
             gen_br(loop_begin);
             put_label(nctx.get_loop_end());
         } else if (c.uu == "do_while") {
+            auto nctx = ctx;
+            nctx.set_loop_end(make_label());
+            nctx.set_loop_body_end(make_label());
+            auto loop_begin = make_label();
+            put_label(loop_begin);
+            gen_statement(c.children[0], nctx);
+            put_label(nctx.get_loop_body_end());
+            auto cond_val = gen_exp(c.children[1], nctx);
+            auto cond_false = make_new_id();
+            a(cond_false + " = icmp eq i32 0, " + cond_val.value);
+            a("br i1", cond_false + ", label "
+              + nctx.get_loop_end() + ", label " + loop_begin);
+            gen_br(loop_begin);
+            put_label(nctx.get_loop_end());
         } else if (c.uu == "for") {
             auto loop_begin = make_label();
             auto loop_body = make_label();
@@ -943,7 +992,15 @@ namespace {
             gen_br(loop_begin);
             put_label(nctx.get_loop_end());
         } else if (c.uu == "break") {
+            if (ctx.get_loop_end() == "") {
+                err("break not in loop", c.loc);
+            }
+            gen_br(ctx.get_loop_end());
         } else if (c.uu == "continue") {
+            if (ctx.get_loop_body_end() == "") {
+                err("continue not in loop", c.loc);
+            }
+            gen_br(ctx.get_loop_body_end());
         } else if (c.uu == "goto") {
             gen_br(ctx.get_asm_label(c[0]));
         } else if (c.uu == "label") {

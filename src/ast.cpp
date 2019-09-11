@@ -136,6 +136,9 @@ namespace {
             } else if (cmp(".")) {
                 advance();
                 res = t_ast("struct_member", {res, identifier()});
+            } else if (cmp("++")) {
+                advance();
+                res = t_ast("postfix_increment", {res});
             } else {
                 break;
             }
@@ -613,8 +616,18 @@ namespace {
             res.add_child(opt_exp(";"));
             res.add_child(opt_exp(")"));
             res.add_child(statement());
-        } else {
-            err("expected iteration statement", loc);
+        } else if (kw("do")) {
+            advance();
+            res.uu = "do_while";
+            res.add_child(statement());
+            if (not kw("while")) {
+                err("expected while", peek().loc);
+            }
+            advance();
+            pop("(");
+            res.add_child(exp());
+            pop(")");
+            pop(";");
         }
         res.loc = loc;
         return res;
