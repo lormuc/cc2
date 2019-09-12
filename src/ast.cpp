@@ -258,7 +258,10 @@ namespace {
         t_ast res = un_exp();
         if (not end()) {
             auto op = peek().uu;
-            vector<string> ops = {"="};
+            vector<string> ops = {
+                "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=", "^=",
+                "|="
+            };
             if (has(ops, op)) {
                 advance();
                 auto y = assign_exp();

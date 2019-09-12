@@ -25,6 +25,7 @@ enum class t_type_kind {
     _union,
     _function,
     _enum,
+    _bool,
 };
 
 class t_type;
@@ -132,3 +133,4 @@ extern const t_type long_double_type;
 extern const t_type void_type;
 extern const t_type string_type;
 extern const t_type void_pointer_type;
+extern const t_type bool_type;
