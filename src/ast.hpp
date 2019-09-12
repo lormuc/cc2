@@ -61,3 +61,5 @@ struct t_ast {
 };
 
 t_ast parse_program(std::vector<t_lexeme>&);
+
+extern const std::vector<std::string> type_specifiers;

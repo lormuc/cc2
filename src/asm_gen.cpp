@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <cctype>
+#include <set>
 #include <cassert>
 
 #include "asm_gen.hpp"
@@ -354,14 +355,24 @@ namespace {
 
     auto get_size(const t_type& t) {
         unsigned res = 0;
-        if (t == char_type or t == u_char_type or t == s_char_type) {
+        if (t == bool_type) {
             res = 1;
-        } else if (t == short_type or t == u_short_type) {
-            res = 2;
-        } else if (t == int_type or t == u_int_type) {
-            res = 4;
-        } else if (t == u_long_type or t == long_type) {
+        } else if (t == char_type or t == u_char_type or t == s_char_type) {
             res = 8;
+        } else if (t == short_type or t == u_short_type) {
+            res = 16;
+        } else if (t == int_type or t == u_int_type) {
+            res = 32;
+        } else if (t == u_long_type or t == long_type) {
+            res = 64;
+        } else if (t == float_type) {
+            res = 32;
+        } else if (t == double_type) {
+            res = 64;
+        } else if (t == long_double_type) {
+            res = 64;
+        } else {
+            throw runtime_error("get_size error");
         }
         return res;
     }
@@ -373,6 +384,10 @@ namespace {
     auto gen_conversion(const t_type& t, const t_exp_value& v,
                         const t_ctx& ctx) {
         t_exp_value res;
+        if (t == void_type) {
+            res.type = t;
+            return res;
+        }
         if (not compatible(t, v.type)) {
             res.type = t;
             res.value = make_new_id();
@@ -380,24 +395,46 @@ namespace {
             auto at = ctx.get_asm_type(t);
             auto s = " " + va + " to " + at;
             string op;
-            if (is_integral_type(v.type) and is_pointer_type(t)) {
+            if (is_integral_type(t) and is_integral_type(v.type)) {
+                if (get_size(t) < get_size(v.type)) {
+                    op = "trunc";
+                } else if (get_size(t) > get_size(v.type)) {
+                    if (is_signed_integer_type(v.type)) {
+                        op = "sext";
+                    } else {
+                        op = "zext";
+                    }
+                } else {
+                    return v;
+                }
+            } else if (is_pointer_type(t) and is_integral_type(v.type)) {
                 op = "inttoptr";
             } else if (is_pointer_type(t) and is_pointer_type(v.type)) {
                 op = "bitcast";
-            } else if (t == double_type and v.type == float_type) {
-                op = "fpext";
-            } else if (t == float_type and v.type == double_type) {
-                op = "fptrunc";
-            } else if (is_floating_type(t) and v.type == int_type) {
-                op = "sitofp";
-            } else if (t == u_long_type and v.type == int_type) {
-                op = "sext";
-            } else if (t == u_long_type and is_pointer_type(v.type)) {
+            } else if (is_integral_type(t) and is_pointer_type(v.type)) {
                 op = "ptrtoint";
-            } else if (t == int_type and v.type == bool_type) {
-                op = "zext";
+            } else if (is_floating_type(t) and is_floating_type(v.type)) {
+                if (get_size(t) < get_size(v.type)) {
+                    op = "fptrunc";
+                } else if (get_size(t) > get_size(v.type)) {
+                    op = "fpext";
+                } else {
+                    return v;
+                }
+            } else if (is_floating_type(t) and is_integral_type(v.type)) {
+                if (is_signed_integer_type(v.type)) {
+                    op = "sitofp";
+                } else {
+                    op = "uitofp";
+                }
+            } else if (is_integral_type(t) and is_floating_type(t)) {
+                if (is_signed_integer_type(v.type)) {
+                    op = "fptosi";
+                } else {
+                    op = "fptoui";
+                }
             } else {
-                throw runtime_error("unknown conversion");
+                return v;
             }
             let(res, op + " " + ctx.make_asm_arg(v) + " to "
                 + ctx.get_asm_type(t));
@@ -579,7 +616,7 @@ namespace {
             y = gen_conversion(u_long_type, y, ctx);
             auto z = make_new_id();
             let(z, fun("sub i64", x, y));
-            let(res, fun("sdiv exact i64", z, to_string(get_size(s))));
+            let(res, fun("sdiv exact i64", z, to_string(get_size(s) / 8)));
         } else if (is_pointer_type(x.type)
                    and is_object_type(x.type.get_pointee_type())
                    and is_integral_type(y.type)) {
@@ -1207,44 +1244,77 @@ namespace {
 
     t_type make_base_type(const t_ast& t) {
         t_type res;
+        set<string> specifiers;
         auto ts = [](auto s) {
             return t_ast("type_specifier", s);
         };
-        if (t.children.size() == 1) {
-            if (t[0].uu == "struct_or_union_specifier") {
-                vector<t_struct_member> members;
-                if (t[0].children.empty()) {
-                    return make_struct_type(t[0].vv);
-                }
-                for (auto& c : t[0][0].children) {
-                    auto base = make_base_type(c[0]);
-                    for (size_t i = 1; i < c.children.size(); i++) {
-                        auto type = base;
-                        string id;
-                        unpack_declarator(type, id, c[i][0]);
-                        members.push_back({id, type});
-                    }
-                }
-                string id;
-                if (t[0].vv.empty()) {
-                    id = make_anon_struct_id();
-                } else {
-                    id = t[0].vv;
-                }
-                return make_struct_type(id, members);
-            } else if (t[0] == ts("int")) {
-                return int_type;
-            } else if (t[0] == ts("float")) {
-                return float_type;
-            } else if (t[0] == ts("double")) {
-                return double_type;
-            } else if (t[0] == ts("char")) {
-                return char_type;
-            } else if (t[0] == ts("void")) {
-                return void_type;
-            } else if (t[0] == ts("long")) {
-                return long_type;
+        if (t.children.size() == 1
+            and t[0].uu == "struct_or_union_specifier") {
+            vector<t_struct_member> members;
+            if (t[0].children.empty()) {
+                return make_struct_type(t[0].vv);
             }
+            for (auto& c : t[0][0].children) {
+                auto base = make_base_type(c[0]);
+                for (size_t i = 1; i < c.children.size(); i++) {
+                    auto type = base;
+                    string id;
+                    unpack_declarator(type, id, c[i][0]);
+                    members.push_back({id, type});
+                }
+            }
+            string id;
+            if (t[0].vv.empty()) {
+                id = make_anon_struct_id();
+            } else {
+                id = t[0].vv;
+            }
+            return make_struct_type(id, members);
+        }
+        for (auto& c : t.children) {
+            if (not (c.uu == "type_specifier"
+                     and has(type_specifiers, c.vv))) {
+                err("bad type specifier", c.loc);
+            }
+            if (specifiers.count(c.vv) != 0) {
+                err("duplicate type specifier", c.loc);
+            }
+            specifiers.insert(c.vv);
+        }
+        auto cmp = [&specifiers](const set<string>& x) {
+            return specifiers == x;
+        };
+        if (cmp({"char"})) {
+            return char_type;
+        } else if (cmp({"signed", "char"})) {
+            return s_char_type;
+        } else if (cmp({"unsigned", "char"})) {
+            return u_char_type;
+        } else if (cmp({"short"}) or cmp({"signed", "short"})
+                   or cmp({"short", "int"})
+                   or cmp({"signed", "short", "int"})) {
+            return short_type;
+        } else if (cmp({"unsigned", "short"})
+                   or cmp({"unsigned", "short", "int"})) {
+            return u_short_type;
+        } else if (cmp({"int"}) or cmp({"signed"}) or cmp({"signed", "int"})) {
+            return int_type;
+        } else if (cmp({"unsigned"}) or cmp({"unsigned", "int"})) {
+            return u_int_type;
+        } else if (cmp({"long"}) or cmp({"signed", "long"})
+                   or cmp({"long", "int"}) or cmp({"signed", "long", "int"})) {
+            return long_type;
+        } else if (cmp({"unsigned", "long"})
+                   or cmp({"unsigned", "long", "int"})) {
+            return u_long_type;
+        } else if (cmp({"float"})) {
+            return float_type;
+        } else if (cmp({"double"})) {
+            return double_type;
+        } else if (cmp({"long", "double"})) {
+            return long_double_type;
+        } else if (cmp({"void"})) {
+            return void_type;
         }
         err("bad type ", t.loc);
     }

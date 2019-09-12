@@ -11,12 +11,12 @@
 
 using namespace std;
 
-namespace {
-    const vector<string> type_specifiers = {
-        "void", "char", "short", "int", "long", "float", "double",
-        "signed", "unsigned"
-    };
+extern const vector<string> type_specifiers = {
+    "void", "char", "short", "int", "long", "float", "double",
+    "signed", "unsigned"
+};
 
+namespace {
     vector<t_lexeme> lexeme_list;
     size_t idx;
 

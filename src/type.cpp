@@ -248,7 +248,7 @@ bool is_struct_type(const t_type& t) {
 }
 
 bool is_integral_type(const t_type& t) {
-    return static_cast<int>(t.get_kind()) < 9;
+    return static_cast<int>(t.get_kind()) < 9 or t == bool_type;
 }
 
 bool is_floating_type(const t_type& t) {
@@ -268,6 +268,11 @@ bool is_scalar_type(const t_type& t) {
 bool is_signed_integer_type(const t_type& t) {
     return (t == int_type or t == s_char_type or t == short_type
             or t == long_type);
+}
+
+bool is_unsigned_integer_type(const t_type& t) {
+    return (t == u_int_type or t == u_char_type or t == u_short_type
+            or t == u_long_type or t == char_type or t == bool_type);
 }
 
 bool t_type::operator==(const t_type& x) const {
