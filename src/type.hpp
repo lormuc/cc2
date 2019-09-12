@@ -113,6 +113,7 @@ bool is_integral_type(const t_type&);
 bool is_floating_type(const t_type&);
 bool is_arithmetic_type(const t_type&);
 bool is_scalar_type(const t_type&);
+bool is_signed_integer_type(const t_type&);
 bool compatible(const t_type&, const t_type&);
 std::string stringify(const t_type&, std::string id = "");
 

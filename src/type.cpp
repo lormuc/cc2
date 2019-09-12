@@ -263,6 +263,11 @@ bool is_scalar_type(const t_type& t) {
     return is_arithmetic_type(k) or k == t_type_kind::_pointer;
 }
 
+bool is_signed_integer_type(const t_type& t) {
+    return (t == int_type or t == s_char_type or t == short_type
+            or t == long_type);
+}
+
 bool t_type::operator==(const t_type& x) const {
     return (kind == x.kind
             and _const == x._const

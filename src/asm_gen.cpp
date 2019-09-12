@@ -186,17 +186,21 @@ namespace {
             return func_name;
         }
 
-        string get_asm_type(const t_type& t) {
+        string get_asm_type(const t_type& t) const {
             string res;
-            if (t == u_long_type) {
-                res = "i64";
-            } else if (t == char_type) {
+            if (t == char_type or t == u_char_type or t == s_char_type) {
                 res = "i8";
-            } else if (t == int_type) {
+            } else if (t == short_type or t == u_short_type) {
+                res = "i16";
+            } else if (t == int_type or t == u_int_type) {
                 res = "i32";
+            } else if (t == long_type or t == u_long_type) {
+                res = "i64";
             } else if (t == float_type) {
                 res = "float";
             } else if (t == double_type) {
+                res = "double";
+            } else if (t == long_double_type) {
                 res = "double";
             } else if (t == void_pointer_type) {
                 res += "i8*";
@@ -308,7 +312,7 @@ namespace {
             return type_map.get_type(id);
         }
 
-        auto make_asm_arg(const t_exp_value& v) {
+        auto make_asm_arg(const t_exp_value& v) const {
             auto at = get_asm_type(v.type);
             if (v.is_lvalue) {
                 at += "*";
@@ -316,6 +320,9 @@ namespace {
             return at + " " + v.value;
         }
     };
+
+    t_exp_value gen_sub(t_exp_value x, t_exp_value y, const t_ctx& ctx);
+    t_exp_value gen_neg(const t_exp_value& x, const t_ctx& ctx);
 
     auto put_label(const string& l, bool f = true) {
         if (f) {
@@ -338,19 +345,30 @@ namespace {
         return true;
     }
 
-    auto make_constant(const string& c, const t_type& t) {
-        if (c == "1" and is_floating_type(t)) {
-            return t_exp_value{c + ".0", t, false};
-        } else {
-            return t_exp_value{c, t, false};
+    auto is_object_type(auto& x) {
+        return true;
+    }
+
+    auto get_size(const t_type& t) {
+        unsigned res = 0;
+        if (t == char_type or t == u_char_type or t == s_char_type) {
+            res = 1;
+        } else if (t == short_type or t == u_short_type) {
+            res = 2;
+        } else if (t == int_type or t == u_int_type) {
+            res = 4;
+        } else if (t == u_long_type or t == long_type) {
+            res = 8;
         }
+        return res;
     }
 
     auto noop() {
         let(make_new_id(), fun("add i1", "0", "0"));
     }
 
-    auto gen_conversion(const t_type& t, const t_exp_value& v, t_ctx& ctx) {
+    auto gen_conversion(const t_type& t, const t_exp_value& v,
+                        const t_ctx& ctx) {
         t_exp_value res;
         if (not compatible(t, v.type)) {
             res.type = t;
@@ -376,6 +394,9 @@ namespace {
             } else if (t == u_long_type and v.type == int_type) {
                 a(res.value + " = sext " + ctx.make_asm_arg(v)
                   + " to i64");
+            } else if (t == u_long_type and is_pointer_type(v.type)) {
+                a(res.value + " = ptrtoint " + ctx.make_asm_arg(v)
+                  + " to " + ctx.get_asm_type(t));
             } else {
                 throw runtime_error("unknown conversion");
             }
@@ -385,113 +406,98 @@ namespace {
         return res;
     }
 
+    void gen_int_promotion(t_exp_value& x, const t_ctx& ctx) {
+        if (x.type == char_type or x.type == s_char_type
+            or x.type == u_char_type or x.type == short_type
+            or x.type == u_short_type) {
+            x = gen_conversion(int_type, x, ctx);
+        }
+    }
+
     void gen_arithmetic_conversions(t_exp_value& x, t_exp_value& y,
-                                    t_ctx& ctx) {
-        auto promote = [&](auto& ta, auto& tb) {
-            if (x.type == ta and y.type == tb) {
-                x = gen_conversion(tb, x, ctx);
-            } else if (x.type == tb and y.type == ta) {
-                y = gen_conversion(tb, y, ctx);
+                                    const t_ctx& ctx) {
+        auto promote = [&](auto& t) {
+            if (y.type == t) {
+                x = gen_conversion(t, x, ctx);
+                return;
+            }
+            if (x.type == t) {
+                y = gen_conversion(t, y, ctx);
+                return;
             }
         };
-        promote(float_type, double_type);
-        promote(int_type, float_type);
-        promote(int_type, double_type);
+        promote(long_double_type);
+        promote(double_type);
+        promote(float_type);
+        gen_int_promotion(x, ctx);
+        gen_int_promotion(y, ctx);
+        promote(u_long_type);
+        promote(long_type);
+        promote(u_int_type);
     }
 
-    auto gen_add(const t_exp_value& x, const t_exp_value& y) {
-        t_exp_value res;
-        res.type = x.type;
-        res.value = make_new_id();
-        if (x.type == int_type) {
-            let(res, fun("add nsw i32", x, y));
-        } else if (x.type == double_type) {
-            let(res, fun("fadd double", x, y));
-        } else if (x.type == float_type) {
-            let(res, fun("fadd float", x, y));
+    auto gen_div(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        gen_arithmetic_conversions(x, y, ctx);
+        auto res = t_exp_value{make_new_id(), x.type};
+        string op;
+        if (is_floating_type(x.type)) {
+            op = "fdiv";
+        } else if (is_signed_integer_type(x.type)) {
+            op = "sdiv";
+        } else {
+            op = "udiv";
         }
+        let(res, fun(op + " " + ctx.get_asm_type(x.type), x, y));
         return res;
     }
 
-    auto gen_div(const t_exp_value& x, const t_exp_value& y) {
-        t_exp_value res;
-        res.type = x.type;
-        res.value = make_new_id();
-        if (x.type == int_type) {
-            a(res.value + " = sdiv i32 " + x.value + ", " + y.value);
-        } else if (x.type == double_type) {
-            a(res.value + " = fdiv double " + x.value + ", " + y.value);
-        } else if (x.type == float_type) {
-            a(res.value + " = fdiv float " + x.value + ", " + y.value);
+    auto gen_mod(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        gen_arithmetic_conversions(x, y, ctx);
+        auto res = t_exp_value{make_new_id(), x.type};
+        string op;
+        if (is_signed_integer_type(x.type)) {
+            op = "srem";
+        } else {
+            op = "urem";
         }
+        let(res, fun(op + " " + ctx.get_asm_type(x.type), x, y));
         return res;
     }
 
-    auto gen_mul(const t_exp_value& x, const t_exp_value& y) {
-        t_exp_value res;
-        res.type = x.type;
-        res.value = make_new_id();
-        if (x.type == int_type) {
-            a(res.value + " = mul nsw i32 " + x.value + ", " + y.value);
-        } else if (x.type == double_type) {
-            a(res.value + " = fmul double " + x.value + ", " + y.value);
-        } else if (x.type == float_type) {
-            a(res.value + " = fmul float " + x.value + ", " + y.value);
-        }
+    auto gen_shl(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        gen_int_promotion(x, ctx);
+        gen_int_promotion(y, ctx);
+        auto res = t_exp_value{make_new_id(), x.type};
+        let(res, fun("shl " + ctx.get_asm_type(x.type), x, y));
         return res;
     }
 
-    auto gen_sub(const t_exp_value& x, const t_exp_value& y) {
-        t_exp_value res;
-        res.type = x.type;
-        res.value = make_new_id();
-        if (x.type == int_type) {
-            a(res.value + " = sub nsw i32 " + x.value + ", " + y.value);
-        } else if (x.type == double_type) {
-            a(res.value + " = fsub double " + x.value + ", " + y.value);
-        } else if (x.type == float_type) {
-            a(res.value + " = fsub float " + x.value + ", " + y.value);
+    auto gen_shr(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        gen_int_promotion(x, ctx);
+        gen_int_promotion(y, ctx);
+        auto res = t_exp_value{make_new_id(), x.type};
+        string op;
+        if (is_signed_integer_type(x.type)) {
+            op = "ashr";
+        } else {
+            op = "lshr";
         }
+        let(res, fun(op + " " + ctx.get_asm_type(x.type), x, y));
         return res;
     }
 
-    auto gen_lte(const t_exp_value& x, const t_exp_value& y) {
-        t_exp_value res;
-        res.type = x.type;
-        res.value = make_new_id();
-        if (x.type == int_type) {
-            auto tmp = make_new_id();
-            a(tmp + " = icmp sle i32 " + x.value + ", " + y.value);
-            a(res.value + " = zext i1 " + tmp + " to i32");
-        } else if (x.type == double_type) {
-            auto tmp = make_new_id();
-            a(tmp + " = fcmp ole double " + x.value + ", " + y.value);
-            a(res.value + " = zext i1 " + tmp + " to i32");
-        } else if (x.type == float_type) {
-            auto tmp = make_new_id();
-            a(tmp + " = fcmp ole float " + x.value + ", " + y.value);
-            a(res.value + " = zext i1 " + tmp + " to i32");
+    auto gen_mul(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        gen_arithmetic_conversions(x, y, ctx);
+        auto res = t_exp_value{make_new_id(), x.type};
+        string op;
+        if (is_signed_integer_type(x.type)) {
+            op = "mul nsw";
+        } else if (is_floating_type(x.type)) {
+            op = "fmul";
+        } else {
+            op = "mul";
         }
-        return res;
-    }
-
-    auto gen_slt(const t_exp_value& x, const t_exp_value& y) {
-        t_exp_value res;
-        res.type = x.type;
-        res.value = make_new_id();
-        if (x.type == int_type) {
-            auto tmp = make_new_id();
-            a(tmp + " = icmp slt i32 " + x.value + ", " + y.value);
-            a(res.value + " = zext i1 " + tmp + " to i32");
-        } else if (x.type == double_type) {
-            auto tmp = make_new_id();
-            a(tmp + " = fcmp olt double " + x.value + ", " + y.value);
-            a(res.value + " = zext i1 " + tmp + " to i32");
-        } else if (x.type == float_type) {
-            auto tmp = make_new_id();
-            a(tmp + " = fcmp olt float " + x.value + ", " + y.value);
-            a(res.value + " = zext i1 " + tmp + " to i32");
-        }
+        let(res, fun(op + " " + ctx.get_asm_type(x.type), x, y));
         return res;
     }
 
@@ -511,17 +517,25 @@ namespace {
         return res;
     }
 
-    auto add(t_exp_value x, t_exp_value y, t_ctx& ctx) {
+    auto gen_add(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
         t_exp_value res;
         if (is_integral_type(x.type) and is_pointer_type(y.type)) {
             swap(x, y);
         }
-        if (is_arithmetic_type(x.type)
-            and is_arithmetic_type(y.type)) {
+        if (is_arithmetic_type(x.type) and is_arithmetic_type(y.type)) {
             gen_arithmetic_conversions(x, y, ctx);
-            res = gen_add(x, y);
-        } else if (is_pointer_type(x.type)
-                   and is_integral_type(y.type)) {
+            res.type = x.type;
+            res.value = make_new_id();
+            string op;
+            if (is_signed_integer_type(x.type)) {
+                op = "add nsw";
+            } else if (is_floating_type(x.type)) {
+                op = "fadd";
+            } else {
+                op = "add";
+            }
+            let(res, fun(op + " " + ctx.get_asm_type(x.type), x, y));
+        } else if (is_pointer_type(x.type) and is_integral_type(y.type)) {
             auto v = make_new_id();
             auto t = ctx.get_asm_type(x.type.get_pointee_type());
             y = gen_conversion(u_long_type, y, ctx);
@@ -531,6 +545,50 @@ namespace {
             res.type = x.type;
         } else {
             throw runtime_error("add error");
+        }
+        return res;
+    }
+
+    t_exp_value gen_neg(const t_exp_value& x, const t_ctx& ctx) {
+        return gen_sub({"0", int_type}, x, ctx);
+    }
+
+    t_exp_value gen_sub(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        t_exp_value res;
+        if (is_arithmetic_type(x.type) and is_arithmetic_type(y.type)) {
+            gen_arithmetic_conversions(x, y, ctx);
+            res.type = x.type;
+            res.value = make_new_id();
+            string op;
+            if (is_signed_integer_type(x.type)) {
+                op = "sub nsw";
+            } else if (is_floating_type(x.type)) {
+                op = "fsub";
+            } else {
+                op = "sub";
+            }
+            let(res, fun(op + " " + ctx.get_asm_type(x.type), x, y));
+        } else if (is_pointer_type(x.type) and is_pointer_type(y.type)
+                   and compatible(unqualify(x.type.get_pointee_type()),
+                                  unqualify(y.type.get_pointee_type()))) {
+            res.type = long_type;
+            res.value = make_new_id();
+            auto s = x.type.get_pointee_type();
+            x = gen_conversion(u_long_type, x, ctx);
+            y = gen_conversion(u_long_type, y, ctx);
+            auto z = make_new_id();
+            let(z, fun("sub i64", x, y));
+            let(res, fun("sdiv exact i64", z, to_string(get_size(s))));
+        } else if (is_pointer_type(x.type)
+                   and is_object_type(x.type.get_pointee_type())
+                   and is_integral_type(y.type)) {
+            res.type = x.type;
+            res.value = make_new_id();
+            auto t = ctx.get_asm_type(x.type.get_pointee_type());
+            y = gen_conversion(u_long_type, y, ctx);
+            y = gen_neg(y, ctx);
+            a(res.value + " = getelementptr inbounds " + t
+              + ", " + ctx.make_asm_arg(x) + ", " + ctx.make_asm_arg(y));
         }
         return res;
     }
@@ -570,53 +628,113 @@ namespace {
         return res;
     }
 
+    auto is_qualified_void(const t_type& t) {
+        return t.get_kind() == t_type_kind::_void;
+    }
+
+    auto gen_eq_ptr_conversions(t_exp_value& x, t_exp_value& y,
+                                const t_ctx& ctx) {
+        if (is_pointer_type(x.type) and is_pointer_type(y.type)) {
+            if (is_qualified_void(y.type.get_pointee_type())) {
+                x = gen_conversion(y.type, x, ctx);
+            } else if (is_qualified_void(x.type.get_pointee_type())) {
+                y = gen_conversion(x.type, y, ctx);
+            }
+        } else if (is_pointer_type(x.type) and is_integral_type(y.type)) {
+            y = gen_conversion(x.type, y, ctx);
+        } else if (is_pointer_type(y.type) and is_integral_type(x.type)) {
+            x = gen_conversion(y.type, x, ctx);
+        }
+    }
+
+    auto ext_bool(const t_exp_value& res, const string& id) {
+        a(res.value + " = zext i1 " + id + " to i32");
+    }
+
+    auto gen_eq(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        auto res = t_exp_value{make_new_id(), int_type};
+        if (is_arithmetic_type(x.type) and is_arithmetic_type(y.type)) {
+            gen_arithmetic_conversions(x, y, ctx);
+            string op;
+            if (is_floating_type(x.type)) {
+                op = "fcmp oeq";
+            } else {
+                op = "icmp eq";
+            }
+            auto tmp = make_new_id();
+            let(tmp, fun(op + " " + ctx.get_asm_type(x.type), x, y));
+            ext_bool(res, tmp);
+        } else {
+            gen_eq_ptr_conversions(x, y, ctx);
+            auto tmp = make_new_id();
+            let(tmp, fun("icmp eq " + ctx.get_asm_type(x.type), x, y));
+            ext_bool(res, tmp);
+        }
+        return res;
+    }
+
     t_exp_value gen_exp(const t_ast& ast, t_ctx& ctx,
                         bool convert_lvalue = true) {
+        auto req_integral = [&](auto& x, auto& y) {
+            if (not is_integral_type(x.type)) {
+                err(ast.vv + " operand is not integral", ast[0].loc);
+            }
+            if (not is_integral_type(y.type)) {
+                err(ast.vv + " operand is not integral", ast[1].loc);
+            }
+        };
+        auto req_arithmetic = [&](auto& x, auto& y) {
+            if (not is_arithmetic_type(x.type)) {
+                err(ast.vv + " operand is not arithmetic", ast[0].loc);
+            }
+            if (not is_arithmetic_type(y.type)) {
+                err(ast.vv + " operand is not arithmetic", ast[1].loc);
+            }
+        };
         t_exp_value res;
         res.is_lvalue = false;
         if (ast.uu == "un_op") {
-            if (ast.vv == "&") {
+            if (ast.vv == "+") {
+                res = gen_exp(ast[0], ctx);
+                if (not is_arithmetic_type(res.type)) {
+                    err("unary + operand type is not arithmetic", ast[0].loc);
+                }
+                gen_int_promotion(res, ctx);
+            } else if (ast.vv == "&") {
                 res = gen_exp(ast[0], ctx, false);
                 if (not res.is_lvalue) {
-                    err("& operand is not an lvalue", ast.loc);
+                    err("& operand is not an lvalue", ast[0].loc);
                 }
                 res.type = make_pointer_type(res.type);
                 res.is_lvalue = false;
             } else if (ast.vv == "*") {
                 auto e = gen_exp(ast[0], ctx);
                 if (not is_pointer_type(e.type)) {
-                    err("* operand is not a pointer", ast.loc);
+                    err("unary * operand is not a pointer", ast[0].loc);
                 }
                 res = dereference(e);
             } else if (ast.vv == "-") {
-                auto x = gen_exp(ast[0], ctx);
-                res.value = make_new_id();
-                res.type = x.type;
-                if (x.type == int_type) {
-                    a(res.value + " = sub nsw i32 0, " + x.value);
-                } else {
-                    err("non-int operand not supported", ast.loc);
+                auto e = gen_exp(ast[0], ctx);
+                if (not is_arithmetic_type(e.type)) {
+                    err("unary - operand is not arithmetic", ast[0].loc);
                 }
+                res = gen_neg(e, ctx);
             } else if (ast.vv == "!") {
-                auto x = gen_exp(ast[0], ctx);
-                res.value = make_new_id();
-                res.type = int_type;
-                if (x.type == int_type) {
-                    auto tmp = make_new_id();
-                    a(tmp + " = icmp eq i32 " + x.value + ", 0");
-                    a(res.value + " = zext i1 " + tmp + " to i32");
-                } else {
-                    err("non-int operand not supported", ast.loc);
+                auto e = gen_exp(ast[0], ctx);
+                if (not is_scalar_type(e.type)) {
+                    err("! operand is not arithmetic", ast[0].loc);
                 }
+                res = gen_eq(e, {"0", int_type}, ctx);
             } else if (ast.vv == "~") {
                 auto x = gen_exp(ast[0], ctx);
-                res.value = make_new_id();
-                res.type = int_type;
-                if (x.type == int_type) {
-                    a(res.value + " = xor i32 -1, " + x.value);
-                } else {
-                    err("non-int operand not supported", ast.loc);
+                if (not is_integral_type(x.type)) {
+                    err("~ operand is not integral", ast[0].loc);
                 }
+                gen_int_promotion(x, ctx);
+                res.value = make_new_id();
+                res.type = x.type;
+                let(res, fun("xor " + ctx.get_asm_type(x.type), "-1", x.value));
+                res.type = int_type;
             } else {
                 err("unknown unary operator", ast.loc);
             }
@@ -647,32 +765,197 @@ namespace {
                 if (ast.vv == "+") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    res = add(x, y, ctx);
-                } else if (ast.vv == "*") {
-                    auto x = gen_exp(ast[0], ctx);
-                    auto y = gen_exp(ast[1], ctx);
-                    gen_arithmetic_conversions(x, y, ctx);
-                    res = gen_mul(x, y);
+                    res = gen_add(x, y, ctx);
                 } else if (ast.vv == "-") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    gen_arithmetic_conversions(x, y, ctx);
-                    res = gen_sub(x, y);
+                    res = gen_sub(x, y, ctx);
+                } else if (ast.vv == "*") {
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    req_arithmetic(x, y);
+                    res = gen_mul(x, y, ctx);
                 } else if (ast.vv == "/") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    gen_arithmetic_conversions(x, y, ctx);
-                    res = gen_div(x, y);
+                    req_arithmetic(x, y);
+                    res = gen_div(x, y, ctx);
+                } else if (ast.vv == "%") {
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    req_integral(x, y);
+                    res = gen_mod(x, y, ctx);
+                } else if (ast.vv == "<<") {
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    req_integral(x, y);
+                    res = gen_shl(x, y, ctx);
+                } else if (ast.vv == ">>") {
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    req_integral(x, y);
+                    res = gen_shr(x, y, ctx);
                 } else if (ast.vv == "<=") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    gen_arithmetic_conversions(x, y, ctx);
-                    res = gen_lte(x, y);
+                    if (is_arithmetic_type(x.type)
+                        and is_arithmetic_type(y.type)) {
+                        gen_arithmetic_conversions(x, y, ctx);
+                        res.value = make_new_id();
+                        res.type = int_type;
+                        string op;
+                        if (is_signed_integer_type(x.type)) {
+                            op = "icmp sle";
+                        } else if (is_floating_type(x.type)) {
+                            op = "fcmp ole";
+                        } else {
+                            op = "icmp ule";
+                        }
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun(op + " " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else if (is_pointer_type(x.type)
+                               and is_pointer_type(y.type)
+                               and compatible(unqualify(x.type),
+                                              unqualify(y.type))) {
+                        res.value = make_new_id();
+                        res.type = int_type;
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun("icmp ule " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else {
+                        err("bad argument types of <=", ast.loc);
+                    }
                 } else if (ast.vv == "<") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    gen_arithmetic_conversions(x, y, ctx);
-                    res = gen_slt(x, y);
+                    if (is_arithmetic_type(x.type)
+                        and is_arithmetic_type(y.type)) {
+                        gen_arithmetic_conversions(x, y, ctx);
+                        res.value = make_new_id();
+                        res.type = int_type;
+                        string op;
+                        if (is_signed_integer_type(x.type)) {
+                            op = "icmp slt";
+                        } else if (is_floating_type(x.type)) {
+                            op = "fcmp olt";
+                        } else {
+                            op = "icmp ult";
+                        }
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun(op + " " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else if (is_pointer_type(x.type)
+                               and is_pointer_type(y.type)
+                               and compatible(unqualify(x.type),
+                                              unqualify(y.type))) {
+                        res.value = make_new_id();
+                        res.type = int_type;
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun("icmp ult " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else {
+                        err("bad argument types of <", ast.loc);
+                    }
+                } else if (ast.vv == ">") {
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    if (is_arithmetic_type(x.type)
+                        and is_arithmetic_type(y.type)) {
+                        gen_arithmetic_conversions(x, y, ctx);
+                        res.value = make_new_id();
+                        res.type = int_type;
+                        string op;
+                        if (is_signed_integer_type(x.type)) {
+                            op = "icmp sgt";
+                        } else if (is_floating_type(x.type)) {
+                            op = "fcmp ogt";
+                        } else {
+                            op = "icmp ugt";
+                        }
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun(op + " " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else if (is_pointer_type(x.type)
+                               and is_pointer_type(y.type)
+                               and compatible(unqualify(x.type),
+                                              unqualify(y.type))) {
+                        res.value = make_new_id();
+                        res.type = int_type;
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun("icmp ugt " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else {
+                        err("bad argument types of >", ast.loc);
+                    }
+                } else if (ast.vv == ">=") {
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    if (is_arithmetic_type(x.type)
+                        and is_arithmetic_type(y.type)) {
+                        gen_arithmetic_conversions(x, y, ctx);
+                        res.value = make_new_id();
+                        res.type = int_type;
+                        string op;
+                        if (is_signed_integer_type(x.type)) {
+                            op = "icmp sge";
+                        } else if (is_floating_type(x.type)) {
+                            op = "fcmp oge";
+                        } else {
+                            op = "icmp uge";
+                        }
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun(op + " " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else if (is_pointer_type(x.type)
+                               and is_pointer_type(y.type)
+                               and compatible(unqualify(x.type),
+                                              unqualify(y.type))) {
+                        res.value = make_new_id();
+                        res.type = int_type;
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun("icmp uge " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else {
+                        err("bad argument types of >=", ast.loc);
+                    }
+                } else if (ast.vv == "==") {
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    res = gen_eq(x, y, ctx);
+                } else if (ast.vv == "!=") {
+                    auto x = gen_exp(ast[0], ctx);
+                    auto y = gen_exp(ast[1], ctx);
+                    res.value = make_new_id();
+                    res.type = int_type;
+                    if (is_arithmetic_type(x.type)
+                        and is_arithmetic_type(y.type)) {
+                        gen_arithmetic_conversions(x, y, ctx);
+                        string op;
+                        if (is_floating_type(x.type)) {
+                            op = "fcmp one";
+                        } else {
+                            op = "icmp ne";
+                        }
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun(op + " " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    } else {
+                        gen_eq_ptr_conversions(x, y, ctx);
+                        auto tmp = make_new_id();
+                        let(tmp,
+                            fun("icmp eq " + ctx.get_asm_type(x.type), x, y));
+                        ext_bool(res, tmp);
+                    }
                 } else {
                     err("unknown binary operator", ast.loc);
                 }
@@ -719,7 +1002,7 @@ namespace {
             a(res.value + " = getelementptr inbounds " + at
               + ", " + at + "* " + x.value + ", i32 0, i32 " + to_string(idx));
         } else if (ast.uu == "array_subscript") {
-            auto z = add(gen_exp(ast[0], ctx), gen_exp(ast[1], ctx), ctx);
+            auto z = gen_add(gen_exp(ast[0], ctx), gen_exp(ast[1], ctx), ctx);
             if (not is_pointer_type(z.type)) {
                 err("sum of arguments to [] is not a pointer", ast.loc);
             }
@@ -731,9 +1014,36 @@ namespace {
                 or not is_modifiable_lvalue(res.type)) {
                 err("cannot increment value of such type", ast[0].loc);
             }
-            auto z = add(res, make_constant("1", res.type), ctx);
+            auto z = gen_add(res, {"1", int_type}, ctx);
             gen_assign(e, z, ctx);
-        } else{
+        } else if (ast.uu == "postfix_decrement") {
+            auto e = gen_exp(ast[0], ctx, false);
+            res = convert_lvalue_to_rvalue(e, ctx);
+            if (not is_scalar_type(unqualify(res.type))
+                or not is_modifiable_lvalue(res.type)) {
+                err("cannot decrement value of such type", ast[0].loc);
+            }
+            auto z = gen_sub(res, {"1", int_type}, ctx);
+            gen_assign(e, z, ctx);
+        } else if (ast.uu == "prefix_increment") {
+            auto e = gen_exp(ast[0], ctx, false);
+            auto z = convert_lvalue_to_rvalue(e, ctx);
+            if (not is_scalar_type(unqualify(z.type))
+                or not is_modifiable_lvalue(z.type)) {
+                err("cannot increment value of such type", ast[0].loc);
+            }
+            res = gen_add(z, {"1", int_type}, ctx);
+            gen_assign(e, res, ctx);
+        } else if (ast.uu == "prefix_decrement") {
+            auto e = gen_exp(ast[0], ctx, false);
+            auto z = convert_lvalue_to_rvalue(e, ctx);
+            if (not is_scalar_type(unqualify(z.type))
+                or not is_modifiable_lvalue(z.type)) {
+                err("cannot increment value of such type", ast[0].loc);
+            }
+            res = gen_sub(z, {"1", int_type}, ctx);
+            gen_assign(e, res, ctx);
+        } else {
             err("bad tree", ast.loc);
         }
         if (convert_lvalue and res.is_lvalue) {
@@ -816,6 +1126,8 @@ namespace {
                 return char_type;
             } else if (t[0] == ts("void")) {
                 return void_type;
+            } else if (t[0] == ts("long")) {
+                return long_type;
             }
         }
         err("bad type ", t.loc);

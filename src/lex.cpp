@@ -57,7 +57,7 @@ vector<t_lexeme> lex(const string& source) {
     while (i != source.end()) {
         old_loc = loc;
         vector<string> tt = {
-            "&&", "||", "==", "!=", "<=", ">=", "++", "--",
+            "&&", "||", "==", "!=", "<=", ">=", "++", "--", "<<", ">>",
             "<", ">", "=", "?", ":", "{", "}", "(", ")", ";", "-", "~", "!",
             "+", "/", "*", "%", "&", "[", "]", ",", ".",
         };
@@ -137,7 +137,7 @@ vector<t_lexeme> lex(const string& source) {
                         val += '\n';
                         j++;
                     }
-                    i = j;
+                    advance(j - i);
                 } else {
                     val += *i;
                     advance();

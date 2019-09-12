@@ -139,6 +139,9 @@ namespace {
             } else if (cmp("++")) {
                 advance();
                 res = t_ast("postfix_increment", {res});
+            } else if (cmp("--")) {
+                advance();
+                res = t_ast("postfix_decrement", {res});
             } else {
                 break;
             }
@@ -147,12 +150,20 @@ namespace {
         return res;
     }
 
-    auto un_exp() {
+    t_ast un_exp() {
         auto loc = peek().loc;
         t_ast res;
         auto kind = peek().uu;
         vector<string> un_ops = {"&", "*", "+", "-", "~", "!"};
-        if (has(un_ops, kind)) {
+        if (cmp("++")) {
+            advance();
+            res.uu = "prefix_increment";
+            res.add_child(un_exp());
+        } else if (cmp("--")) {
+            advance();
+            res.uu = "prefix_decrement";
+            res.add_child(un_exp());
+        } else if (has(un_ops, kind)) {
             advance();
             auto e = cast_exp();
             res.uu = "un_op";
@@ -196,7 +207,7 @@ namespace {
     }
 
     auto shift_exp() {
-        return add_exp();
+        return left_assoc_bin_op({"<<", ">>"}, add_exp);
     }
 
     auto rel_exp() {
