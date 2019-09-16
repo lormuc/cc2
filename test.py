@@ -38,18 +38,21 @@ def test(filename):
     else:
         global success_cnt
         global failure_cnt
-        b = filename
-        print(b, end="")
-        print((50 - len(b)) * ".", end="")
+        msg = filename
+        msg += (50 - len(filename)) * "."
         success = test_file(filename)
         if success:
-            print("ok");
+            msg += "ok";
             success_cnt += 1
         else:
-            print("fail")
+            msg += "fail"
             failure_cnt += 1
+        print(msg)
 
-if len(sys.argv) == 2:
-    test(sys.argv[1])
-print("===================summary==========================")
-print(f"{success_cnt} successes, {failure_cnt} failures")
+try:
+    if len(sys.argv) == 2:
+        test(sys.argv[1])
+    print("===================summary==========================")
+    print(f"{success_cnt} successes, {failure_cnt} failures")
+except KeyboardInterrupt:
+    sys.exit(0)

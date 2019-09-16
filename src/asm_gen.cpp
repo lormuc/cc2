@@ -370,7 +370,25 @@ namespace {
         let(make_new_id(), fun("add i1", "0", "0"));
     }
 
-    class t_conversion_error {};
+    class t_conversion_error : public runtime_error {
+    public:
+        t_conversion_error(const t_type& a, const t_type& b)
+            : runtime_error("cannot convert " + stringify(a)
+                            + " to " + stringify(b))
+        {}
+    };
+
+    t_type make_base_type(const t_ast&, const t_ctx&);
+    string unpack_declarator(t_type& type, const t_ast& t);
+
+    auto make_type(const t_ast& ast, const t_ctx& ctx) {
+        cout << "make_type " << ast[0].uu << "\n";
+        auto res = make_base_type(ast[0], ctx);
+        if (ast.children.size() == 2) {
+            unpack_declarator(res, ast[1]);
+        }
+        return res;
+    }
 
     auto gen_conversion(const t_type& t, const t_exp_value& v,
                         const t_ctx& ctx) {
@@ -382,14 +400,12 @@ namespace {
                       + ctx.get_asm_type(t)));
             return res;
         }
-        if (not is_scalar_type(t) or not is_scalar_type(v.type)) {
-            throw runtime_error("cannot convert " + stringify(v.type)
-                                + " to " + stringify(t));
-            // throw t_conversion_error();
-        }
         if (t == void_type) {
             res.type = t;
             return res;
+        }
+        if (not is_scalar_type(t) or not is_scalar_type(v.type)) {
+            throw t_conversion_error(v.type, t);
         }
         if (not compatible(t, v.type)) {
             res.type = t;
@@ -427,14 +443,14 @@ namespace {
                 } else {
                     op = "uitofp";
                 }
-            } else if (is_integral_type(t) and is_floating_type(t)) {
+            } else if (is_integral_type(t) and is_floating_type(v.type)) {
                 if (is_signed_integer_type(v.type)) {
                     op = "fptosi";
                 } else {
                     op = "fptoui";
                 }
             } else {
-                throw t_conversion_error();
+                throw t_conversion_error(v.type, t);
             }
             let(res, (op + " " + ctx.make_asm_arg(v) + " to "
                       + ctx.get_asm_type(t)));
@@ -1202,6 +1218,10 @@ namespace {
             }
             res = gen_sub(z, {"1", int_type}, ctx);
             gen_assign(e, res, ctx);
+        } else if (ast.uu == "cast") {
+            auto e = gen_exp(ast[1], ctx);
+            auto t = make_type(ast[0], ctx);
+            res = gen_conversion(t, e, ctx);
         } else {
             throw logic_error("unhandled operator " + ast.vv);
         }
@@ -1219,33 +1239,35 @@ namespace {
 
     void gen_compound_statement(const t_ast&, const t_ctx&);
 
-    namespace {
-        void unpack_declarator(t_type& type, string& name, const t_ast& t) {
-            auto p = &(t[0]);
-            while (not (*p).children.empty()) {
-                type = make_pointer_type(type);
-                p = &((*p)[0]);
-            }
-            auto& dd = t[1];
-            assert(dd.children.size() >= 1);
-            auto i = dd.children.size() - 1;
-            while (i != 0) {
-                if (dd[i].uu == "array_size") {
-                    if (dd[i].children.size() != 0) {
-                        assert (dd[i][0].uu == "integer_constant");
-                        auto arr_len = stoull(dd[i][0].vv);
-                        type = make_array_type(type, arr_len);
-                    } else {
-                        type = make_array_type(type);
-                    }
+    string unpack_declarator(t_type& type, const t_ast& t) {
+        auto p = &(t[0]);
+        while (not (*p).children.empty()) {
+            type = make_pointer_type(type);
+            p = &((*p)[0]);
+        }
+        if (t[1].uu == "opt" and t[1].children.empty()) {
+            return "";
+        }
+        auto& dd = (t[1].uu == "opt") ? t[1][0] : t[1];
+        assert(dd.children.size() >= 1);
+        auto i = dd.children.size() - 1;
+        while (i != 0) {
+            auto& op = dd[i].uu;
+            if (op == "array_size") {
+                if (dd[i].children.size() != 0) {
+                    assert (dd[i][0].uu == "integer_constant");
+                    auto arr_len = stoull(dd[i][0].vv);
+                    type = make_array_type(type, arr_len);
+                } else {
+                    type = make_array_type(type);
                 }
-                i--;
             }
-            if (dd[0].uu == "identifier") {
-                name = dd[0].vv;
-            } else {
-                unpack_declarator(type, name, dd[0]);
-            }
+            i--;
+        }
+        if (dd[0].uu == "identifier") {
+            return dd[0].vv;
+        } else {
+            return unpack_declarator(type, dd[0]);
         }
     }
 
@@ -1265,8 +1287,7 @@ namespace {
                 auto base = make_base_type(c[0], ctx);
                 for (size_t i = 1; i < c.children.size(); i++) {
                     auto type = base;
-                    string id;
-                    unpack_declarator(type, id, c[i][0]);
+                    auto id = unpack_declarator(type, c[i][0]);
                     if (type.get_is_size_known() == false) {
                         auto _type = ctx.get_type(type.get_name());
                         type.set_size(_type.get_size(), _type.get_alignment());
@@ -1355,8 +1376,7 @@ namespace {
         }
         for (size_t i = 1; i < ast.children.size(); i++) {
             auto type = base;
-            string id;
-            unpack_declarator(type, id, ast[i][0]);
+            auto id = unpack_declarator(type, ast[i][0]);
             ctx.define_var(id, type);
             if (ast[i].children.size() > 1) {
                 auto& ini = ast[i][1];

@@ -19,8 +19,8 @@
 
 using namespace std;
 
-// auto& log = cout;
-ofstream log;
+auto& log = cout;
+// ofstream log;
 
 void print(const t_ast& t, unsigned level = 0) {
     auto print_spaces = [&](unsigned n) {
@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    log.open("log.txt");
+    // log.open("log.txt");
     auto sep = [&]() {
         log << "\n";
         log << "-------------\n";

@@ -10,7 +10,7 @@
 #include "type.hpp"
 #include "lex.hpp"
 
-const auto debug = false;
+const auto debug = true;
 
 using namespace std;
 
@@ -304,14 +304,10 @@ namespace {
 
     auto abstract_declarator_() {
         auto res = t_ast("abstract_declarator", peek().loc);
-        try {
-            res.add_child(opt(pointer));
-            try {
-                res.add_child(direct_abstract_declarator());
-            } catch (t_parse_error) {
-            }
-        } catch (t_parse_error) {
-            res.add_child(direct_abstract_declarator());
+        res.add_child(opt(pointer));
+        res.add_child(opt(direct_abstract_declarator));
+        if (peek().loc == res.loc) {
+            throw t_parse_error(res.loc);
         }
         return res;
     }
@@ -328,10 +324,18 @@ namespace {
     }
     def_rule(type_name);
 
-    t_ast cast_exp() {
-        
-        return un_exp();
+    auto cast_() {
+        auto res = t_ast("cast", peek().loc);
+        pop("(");
+        res.add_child(type_name());
+        pop(")");
+        res.add_child(cast_exp());
+        return res;
     }
+    def_rule(cast);
+
+    auto cast_exp_() { return or_(un_exp, cast); }
+    def_rule(cast_exp);
 
     auto left_assoc_bin_op(const vector<string>& ops,
                            function<t_ast()> subexp) {
@@ -415,27 +419,26 @@ namespace {
     }
     def_rule(cond_exp);
 
-    auto assign_exp_() {
-        auto old_state = get_state();
-        auto loc = peek().loc;
-        auto res = un_exp();
+    auto assign_() {
+        auto x = un_exp();
         vector<string> ops = {
             "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=",
             "^=", "|="
         };
         auto op = peek().uu;
-        if (has(ops, op)) {
-            loc = peek().loc;
-            advance();
-            auto y = assign_exp();
-            res = t_ast("bin_op", op, {res, y});
-        } else {
-            set_state(old_state);
-            res = cond_exp();
+        if (not has(ops, op)) {
+            throw t_parse_error("expected assignment operator",
+                                peek().loc);
         }
-        res.loc = loc;
+        auto res = t_ast("bin_op", op, peek().loc);
+        advance();
+        res.add_child(x);
+        res.add_child(assign_exp());
         return res;
     }
+    def_rule(assign);
+
+    auto assign_exp_() { return or_(assign, cond_exp); }
     def_rule(assign_exp);
 
     auto exp_() {
@@ -791,9 +794,7 @@ namespace {
     }
     def_rule(statement);
 
-    auto block_item_() {
-        return or_(statement, declaration);
-    }
+    auto block_item_() { return or_(statement, declaration); }
     def_rule(block_item);
 
     auto function_definition_() {
