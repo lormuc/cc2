@@ -19,8 +19,7 @@
 
 using namespace std;
 
-auto& log = cout;
-// ofstream log;
+ofstream log;
 
 void print(const t_ast& t, unsigned level = 0) {
     auto print_spaces = [&](unsigned n) {
@@ -37,6 +36,7 @@ void print(const t_ast& t, unsigned level = 0) {
     for (auto& c : t.children) {
         print(c, level + 1);
     }
+    log.flush();
 }
 
 auto delete_comments(const string& str) {
@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // log.open("log.txt");
+    log.open("log.txt");
     auto sep = [&]() {
         log << "\n";
         log << "-------------\n";
@@ -139,6 +139,7 @@ int main(int argc, char** argv) {
         log << "\n";
     }
     sep();
+    log.flush();
 
     try {
         auto ast = parse_program(lexemes);
