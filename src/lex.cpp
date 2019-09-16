@@ -9,6 +9,10 @@
 using namespace std;
 
 namespace {
+    auto err(const string& str, t_loc loc = t_loc()) {
+        throw t_compile_error(str, loc);
+    }
+
     auto is_id_char(char ch) {
         return ch == '_' or isalnum(ch);
     }
@@ -57,6 +61,7 @@ vector<t_lexeme> lex(const string& source) {
     while (i != source.end()) {
         old_loc = loc;
         vector<string> tt = {
+            "...",
             "&&", "||", "==", "!=", "<=", ">=", "++", "--", "<<", ">>",
             "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=", "^=", "|=",
             "<", ">", "=", "?", ":", "{", "}", "(", ")", ";", "-", "~", "!",
@@ -110,7 +115,7 @@ vector<t_lexeme> lex(const string& source) {
                 "switch", "typedef", "union", "volatile"
             };
             if (has(keywords, val)) {
-                push("keyword", val);
+                push(val, val);
             } else {
                 push("identifier", val);
             }

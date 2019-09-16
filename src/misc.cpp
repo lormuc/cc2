@@ -31,7 +31,3 @@ string print_bytes(const string& str) {
     }
     return res;
 }
-
-void err(const string& str, t_loc loc) {
-    throw t_error(str, loc);
-}

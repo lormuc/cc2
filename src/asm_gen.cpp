@@ -20,13 +20,23 @@ namespace {
     string func_var_alloc;
 
     string make_new_id();
-    ull eval_const_exp(const t_ast&);
+
+    class t_bad_operands : public runtime_error {
+    public:
+        t_bad_operands(const string& str)
+            : runtime_error("bad operands to " + str)
+        {}
+    };
 
     struct t_exp_value {
         string value;
         t_type type;
         bool is_lvalue = false;
     };
+
+    auto err(const string& str, t_loc loc = t_loc()) {
+        throw t_compile_error(str, loc);
+    }
 
     string make_anon_struct_id() {
         static auto count = 0u;
@@ -88,6 +98,9 @@ namespace {
         a(v + " = " + s);
     }
 
+    class t_unknown_id_error {};
+    class t_redefinition_error {};
+
     class t_ctx {
         struct t_scope_map {
             struct t_data {
@@ -105,7 +118,7 @@ namespace {
                 if (oit != outer_map.end()) {
                     return (*oit).second;
                 } else {
-                    throw runtime_error(string("unknown id <") + id + ">");
+                    throw t_unknown_id_error();
                 }
             }
             const auto& get_data(const string& id) const {
@@ -117,7 +130,7 @@ namespace {
                 if (oit != outer_map.end()) {
                     return (*oit).second;
                 } else {
-                    throw runtime_error(string("unknown id <") + id + ">");
+                    throw t_unknown_id_error();
                 }
             }
             t_scope_map() {}
@@ -150,15 +163,15 @@ namespace {
         void add_label(const t_ast& ast) {
             auto it = label_map.find(ast.vv);
             if (it != label_map.end()) {
-                err("label redefinition", ast.loc);
+                throw t_redefinition_error();
             }
             label_map[ast.vv] = make_label();
         }
 
-        string get_asm_label(const t_ast& ast) {
+        string get_asm_label(const t_ast& ast) const {
             auto it = label_map.find(ast.vv);
             if (it == label_map.end()) {
-                err("undeclared label", ast.loc);
+                throw t_unknown_id_error();
             }
             return (*it).second;
         }
@@ -218,6 +231,8 @@ namespace {
                 res += "]";
             } else if (is_struct_type(t)) {
                 res += type_map.get_asm_var(t.get_name());
+            } else {
+                throw logic_error("get_asm_type " + stringify(t) + " fail");
             }
             return res;
         }
@@ -230,8 +245,6 @@ namespace {
                 if (not type_map.map[id].type.is_complete()) {
                     type_map.map[id].type = type;
                     res = type_map.map[id].asm_var;
-                } else if (type.is_complete()) {
-                    throw runtime_error("struct redefinition");
                 }
             } else {
                 type_map.map[id] = {type, res};
@@ -336,7 +349,7 @@ namespace {
     }
 
     string make_new_id() {
-        static ull aux_var_cnt = 0;
+        static int aux_var_cnt = 0;
         aux_var_cnt++;
         return string("%_") + to_string(aux_var_cnt);
     }
@@ -353,37 +366,27 @@ namespace {
         return true;
     }
 
-    auto get_size(const t_type& t) {
-        unsigned res = 0;
-        if (t == bool_type) {
-            res = 1;
-        } else if (t == char_type or t == u_char_type or t == s_char_type) {
-            res = 8;
-        } else if (t == short_type or t == u_short_type) {
-            res = 16;
-        } else if (t == int_type or t == u_int_type) {
-            res = 32;
-        } else if (t == u_long_type or t == long_type) {
-            res = 64;
-        } else if (t == float_type) {
-            res = 32;
-        } else if (t == double_type) {
-            res = 64;
-        } else if (t == long_double_type) {
-            res = 64;
-        } else {
-            throw runtime_error("get_size error");
-        }
-        return res;
-    }
-
     auto noop() {
         let(make_new_id(), fun("add i1", "0", "0"));
     }
 
+    class t_conversion_error {};
+
     auto gen_conversion(const t_type& t, const t_exp_value& v,
                         const t_ctx& ctx) {
         t_exp_value res;
+        if (t == int_type and v.type == bool_type) {
+            res.type = t;
+            res.value = make_new_id();
+            let(res, ("zext " + ctx.make_asm_arg(v) + " to "
+                      + ctx.get_asm_type(t)));
+            return res;
+        }
+        if (not is_scalar_type(t) or not is_scalar_type(v.type)) {
+            throw runtime_error("cannot convert " + stringify(v.type)
+                                + " to " + stringify(t));
+            // throw t_conversion_error();
+        }
         if (t == void_type) {
             res.type = t;
             return res;
@@ -391,14 +394,11 @@ namespace {
         if (not compatible(t, v.type)) {
             res.type = t;
             res.value = make_new_id();
-            auto va = ctx.make_asm_arg(v);
-            auto at = ctx.get_asm_type(t);
-            auto s = " " + va + " to " + at;
             string op;
             if (is_integral_type(t) and is_integral_type(v.type)) {
-                if (get_size(t) < get_size(v.type)) {
+                if (t.get_size() < v.type.get_size()) {
                     op = "trunc";
-                } else if (get_size(t) > get_size(v.type)) {
+                } else if (t.get_size() > v.type.get_size()) {
                     if (is_signed_integer_type(v.type)) {
                         op = "sext";
                     } else {
@@ -414,9 +414,9 @@ namespace {
             } else if (is_integral_type(t) and is_pointer_type(v.type)) {
                 op = "ptrtoint";
             } else if (is_floating_type(t) and is_floating_type(v.type)) {
-                if (get_size(t) < get_size(v.type)) {
+                if (t.get_size() < v.type.get_size()) {
                     op = "fptrunc";
-                } else if (get_size(t) > get_size(v.type)) {
+                } else if (t.get_size() > v.type.get_size()) {
                     op = "fpext";
                 } else {
                     return v;
@@ -434,10 +434,10 @@ namespace {
                     op = "fptoui";
                 }
             } else {
-                return v;
+                throw t_conversion_error();
             }
-            let(res, op + " " + ctx.make_asm_arg(v) + " to "
-                + ctx.get_asm_type(t));
+            let(res, (op + " " + ctx.make_asm_arg(v) + " to "
+                      + ctx.get_asm_type(t)));
         } else {
             res = v;
         }
@@ -475,6 +475,9 @@ namespace {
     }
 
     auto gen_div(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        if (not (is_arithmetic_type(x.type) and is_arithmetic_type(y.type))) {
+            throw t_bad_operands("/");
+        }
         gen_arithmetic_conversions(x, y, ctx);
         auto res = t_exp_value{make_new_id(), x.type};
         string op;
@@ -490,6 +493,9 @@ namespace {
     }
 
     auto gen_mod(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        if (not (is_integral_type(x.type) and is_integral_type(y.type))) {
+            throw t_bad_operands("%");
+        }
         gen_arithmetic_conversions(x, y, ctx);
         auto res = t_exp_value{make_new_id(), x.type};
         string op;
@@ -503,6 +509,9 @@ namespace {
     }
 
     auto gen_shl(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        if (not (is_integral_type(x.type) and is_integral_type(y.type))) {
+            throw t_bad_operands("<<");
+        }
         gen_int_promotion(x, ctx);
         gen_int_promotion(y, ctx);
         auto res = t_exp_value{make_new_id(), x.type};
@@ -511,6 +520,9 @@ namespace {
     }
 
     auto gen_shr(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        if (not (is_integral_type(x.type) and is_integral_type(y.type))) {
+            throw t_bad_operands(">>");
+        }
         gen_int_promotion(x, ctx);
         gen_int_promotion(y, ctx);
         auto res = t_exp_value{make_new_id(), x.type};
@@ -525,6 +537,9 @@ namespace {
     }
 
     auto gen_mul(t_exp_value x, t_exp_value y, const t_ctx& ctx) {
+        if (not (is_arithmetic_type(x.type) and is_arithmetic_type(y.type))) {
+            throw t_bad_operands("binary *");
+        }
         gen_arithmetic_conversions(x, y, ctx);
         auto res = t_exp_value{make_new_id(), x.type};
         string op;
@@ -539,7 +554,7 @@ namespace {
         return res;
     }
 
-    auto gen_array_elt(const t_exp_value& v, ull i, t_ctx& ctx) {
+    auto gen_array_elt(const t_exp_value& v, int i, t_ctx& ctx) {
         t_exp_value res;
         res.value = make_new_id();
         auto len_str = to_string(v.type.get_length());
@@ -582,7 +597,7 @@ namespace {
             res.value = v;
             res.type = x.type;
         } else {
-            throw runtime_error("add error");
+            throw t_bad_operands("binary +");
         }
         return res;
     }
@@ -616,7 +631,7 @@ namespace {
             y = gen_conversion(u_long_type, y, ctx);
             auto z = make_new_id();
             let(z, fun("sub i64", x, y));
-            let(res, fun("sdiv exact i64", z, to_string(get_size(s) / 8)));
+            let(res, fun("sdiv exact i64", z, to_string(s.get_size() / 8)));
         } else if (is_pointer_type(x.type)
                    and is_object_type(x.type.get_pointee_type())
                    and is_integral_type(y.type)) {
@@ -627,6 +642,8 @@ namespace {
             y = gen_neg(y, ctx);
             a(res.value + " = getelementptr inbounds " + t
               + ", " + ctx.make_asm_arg(x) + ", " + ctx.make_asm_arg(y));
+        } else {
+            throw t_bad_operands("binary -");
         }
         return res;
     }
@@ -641,7 +658,7 @@ namespace {
         return gen_assign(lhs, gen_conversion(lhs.type, rhs, ctx), ctx);
     }
 
-    auto gen_struct_member(const t_exp_value& v, ull i, t_ctx& ctx) {
+    auto gen_struct_member(const t_exp_value& v, int i, t_ctx& ctx) {
         t_exp_value res;
         res.type = v.type.get_member_type(i);
         res.value = make_new_id();
@@ -705,9 +722,11 @@ namespace {
                 op = "icmp eq";
             }
             let(res, fun(op + " " + ctx.get_asm_type(x.type), x, y));
-        } else {
+        } else if (is_pointer_type(x.type) or is_pointer_type(y.type)) {
             gen_eq_ptr_conversions(x, y, ctx);
             let(res, fun("icmp eq " + ctx.get_asm_type(x.type), x, y));
+        } else {
+            throw t_bad_operands("==");
         }
         return res;
     }
@@ -746,30 +765,6 @@ namespace {
 
     t_exp_value gen_exp(const t_ast& ast, t_ctx& ctx,
                         bool convert_lvalue = true) {
-        auto require_integral = [&](auto& x, auto& y) {
-            if (not is_integral_type(x.type)) {
-                err(ast.vv + " operand is not integral", ast[0].loc);
-            }
-            if (not is_integral_type(y.type)) {
-                err(ast.vv + " operand is not integral", ast[1].loc);
-            }
-        };
-        auto require_arithmetic = [&](auto& x, auto& y) {
-            if (not is_arithmetic_type(x.type)) {
-                err(ast.vv + " operand is not arithmetic", ast[0].loc);
-            }
-            if (not is_arithmetic_type(y.type)) {
-                err(ast.vv + " operand is not arithmetic", ast[1].loc);
-            }
-        };
-        auto require_scalar = [&](auto& x, auto& y) {
-            if (not is_arithmetic_type(x.type)) {
-                err(ast.vv + " operand is not scalar", ast[0].loc);
-            }
-            if (not is_arithmetic_type(y.type)) {
-                err(ast.vv + " operand is not scalar", ast[1].loc);
-            }
-        };
         auto assign_op = [&](auto& op) {
             auto x = gen_exp(ast[0], ctx, false);
             auto y = gen_exp(ast[1], ctx);
@@ -778,44 +773,43 @@ namespace {
             return gen_convert_assign(x, z, ctx);
         };
         t_exp_value res;
-        res.is_lvalue = false;
         if (ast.uu == "un_op") {
             if (ast.vv == "+") {
                 res = gen_exp(ast[0], ctx);
                 if (not is_arithmetic_type(res.type)) {
-                    err("unary + operand type is not arithmetic", ast[0].loc);
+                    throw t_bad_operands("unary +");
                 }
                 gen_int_promotion(res, ctx);
             } else if (ast.vv == "&") {
                 res = gen_exp(ast[0], ctx, false);
                 if (not res.is_lvalue) {
-                    err("& operand is not an lvalue", ast[0].loc);
+                    throw t_bad_operands("unary &");
                 }
                 res.type = make_pointer_type(res.type);
                 res.is_lvalue = false;
             } else if (ast.vv == "*") {
                 auto e = gen_exp(ast[0], ctx);
                 if (not is_pointer_type(e.type)) {
-                    err("unary * operand is not a pointer", ast[0].loc);
+                    throw t_bad_operands("unary *");
                 }
                 res = dereference(e);
             } else if (ast.vv == "-") {
                 auto e = gen_exp(ast[0], ctx);
                 if (not is_arithmetic_type(e.type)) {
-                    err("unary - operand is not arithmetic", ast[0].loc);
+                    throw t_bad_operands("unary -");
                 }
                 res = gen_neg(e, ctx);
             } else if (ast.vv == "!") {
                 auto e = gen_exp(ast[0], ctx);
                 if (not is_scalar_type(e.type)) {
-                    err("! operand is not arithmetic", ast[0].loc);
+                    throw t_bad_operands("!");
                 }
                 auto z = gen_eq(e, {"0", int_type}, ctx);
                 res = gen_conversion(int_type, z, ctx);
             } else if (ast.vv == "~") {
                 auto x = gen_exp(ast[0], ctx);
                 if (not is_integral_type(x.type)) {
-                    err("~ operand is not integral", ast[0].loc);
+                    throw t_bad_operands("!");
                 }
                 gen_int_promotion(x, ctx);
                 res.value = make_new_id();
@@ -823,7 +817,7 @@ namespace {
                 let(res, fun("xor " + ctx.get_asm_type(x.type), "-1", x.value));
                 res.type = int_type;
             } else {
-                err("unknown unary operator", ast.loc);
+                throw logic_error("unhandled unary operator " + ast.vv);
             }
         } else if (ast.uu == "integer_constant") {
             res.value = ast.vv;
@@ -837,9 +831,6 @@ namespace {
             res.is_lvalue = true;
         } else if (ast.uu == "identifier") {
             auto& id = ast.vv;
-            if (not ctx.has_var(id)) {
-                err("unknown identifier", ast.loc);
-            }
             res.value += ctx.get_var_asm_var(id);
             res.type = ctx.get_var_type(id);
             res.is_lvalue = true;
@@ -860,27 +851,22 @@ namespace {
                 } else if (ast.vv == "*") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    require_arithmetic(x, y);
                     res = gen_mul(x, y, ctx);
                 } else if (ast.vv == "/") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    require_arithmetic(x, y);
                     res = gen_div(x, y, ctx);
                 } else if (ast.vv == "%") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    require_integral(x, y);
                     res = gen_mod(x, y, ctx);
                 } else if (ast.vv == "<<") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    require_integral(x, y);
                     res = gen_shl(x, y, ctx);
                 } else if (ast.vv == ">>") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    require_integral(x, y);
                     res = gen_shr(x, y, ctx);
                 } else if (ast.vv == "<=") {
                     auto x = gen_exp(ast[0], ctx);
@@ -909,7 +895,7 @@ namespace {
                             fun("icmp ule " + ctx.get_asm_type(x.type), x, y));
                         res = gen_conversion(int_type, tmp, ctx);
                     } else {
-                        err("bad argument types of <=", ast.loc);
+                        throw t_bad_operands("<=");
                     }
                 } else if (ast.vv == "<") {
                     auto x = gen_exp(ast[0], ctx);
@@ -938,7 +924,7 @@ namespace {
                             fun("icmp ult " + ctx.get_asm_type(x.type), x, y));
                         res = gen_conversion(int_type, tmp, ctx);
                     } else {
-                        err("bad argument types of <", ast.loc);
+                        throw t_bad_operands("<");
                     }
                 } else if (ast.vv == ">") {
                     auto x = gen_exp(ast[0], ctx);
@@ -967,7 +953,7 @@ namespace {
                             fun("icmp ugt " + ctx.get_asm_type(x.type), x, y));
                         res = gen_conversion(int_type, tmp, ctx);
                     } else {
-                        err("bad argument types of >", ast.loc);
+                        throw t_bad_operands(">");
                     }
                 } else if (ast.vv == ">=") {
                     auto x = gen_exp(ast[0], ctx);
@@ -996,7 +982,7 @@ namespace {
                             fun("icmp uge " + ctx.get_asm_type(x.type), x, y));
                         res = gen_conversion(int_type, tmp, ctx);
                     } else {
-                        err("bad argument types of >=", ast.loc);
+                        throw t_bad_operands(">=");
                     }
                 } else if (ast.vv == "==") {
                     auto x = gen_exp(ast[0], ctx);
@@ -1019,17 +1005,23 @@ namespace {
                         let(tmp,
                             fun(op + " " + ctx.get_asm_type(x.type), x, y));
                         res = gen_conversion(int_type, tmp, ctx);
-                    } else {
+                    } else if (is_pointer_type(x.type)
+                               or is_pointer_type(y.type)) {
                         gen_eq_ptr_conversions(x, y, ctx);
                         auto tmp = t_exp_value{make_new_id(), bool_type};
                         let(tmp,
                             fun("icmp eq " + ctx.get_asm_type(x.type), x, y));
                         res = gen_conversion(int_type, tmp, ctx);
+                    } else {
+                        throw t_bad_operands("!=");
                     }
                 } else if (ast.vv == "&") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    require_integral(x, y);
+                    if (not (is_integral_type(x.type)
+                             and is_integral_type(y.type))) {
+                        throw t_bad_operands("binary &");
+                    }
                     gen_arithmetic_conversions(x, y, ctx);
                     res.value = make_new_id();
                     res.type = x.type;
@@ -1037,7 +1029,10 @@ namespace {
                 } else if (ast.vv == "^") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    require_integral(x, y);
+                    if (not (is_integral_type(x.type)
+                             and is_integral_type(y.type))) {
+                        throw t_bad_operands("^");
+                    }
                     gen_arithmetic_conversions(x, y, ctx);
                     res.value = make_new_id();
                     res.type = x.type;
@@ -1045,7 +1040,10 @@ namespace {
                 } else if (ast.vv == "|") {
                     auto x = gen_exp(ast[0], ctx);
                     auto y = gen_exp(ast[1], ctx);
-                    require_integral(x, y);
+                    if (not (is_integral_type(x.type)
+                             and is_integral_type(y.type))) {
+                        throw t_bad_operands("|");
+                    }
                     gen_arithmetic_conversions(x, y, ctx);
                     res.value = make_new_id();
                     res.type = x.type;
@@ -1060,7 +1058,10 @@ namespace {
                     gen_cond_br(gen_is_zero(x, ctx), l1, l2);
                     put_label(l2, false);
                     auto y = gen_exp(ast[1], ctx);
-                    require_scalar(x, y);
+                    if (not (is_scalar_type(x.type)
+                             and is_scalar_type(y.type))) {
+                        throw t_bad_operands("|");
+                    }
                     auto z = gen_is_nonzero(y, ctx);
                     put_label(l3);
                     put_label(l1);
@@ -1078,7 +1079,10 @@ namespace {
                     gen_cond_br(gen_is_zero(x, ctx), l2, l1);
                     put_label(l2, false);
                     auto y = gen_exp(ast[1], ctx);
-                    require_scalar(x, y);
+                    if (not (is_scalar_type(x.type)
+                             and is_scalar_type(y.type))) {
+                        throw t_bad_operands("|");
+                    }
                     auto z = gen_is_nonzero(y, ctx);
                     put_label(l3);
                     put_label(l1);
@@ -1110,7 +1114,7 @@ namespace {
                     gen_exp(ast[0], ctx);
                     res = gen_exp(ast[1], ctx);
                 } else {
-                    err("unknown binary operator", ast.loc);
+                    throw logic_error("unhandled operator " + ast.vv);
                 }
             }
         } else if (ast.uu == "function_call") {
@@ -1137,14 +1141,14 @@ namespace {
             auto x = gen_exp(ast[0], ctx, false);
             auto member_id = ast[1].vv;
             if (not is_struct_type(x.type)) {
-                err("dot operand is not a struct", ast.loc);
+                throw t_bad_operands(".");
             }
             auto struct_name = x.type.get_name();
             auto t = ctx.get_type(struct_name);
             assert(t.is_complete());
             auto idx = t.get_member_index(member_id);
-            if (is_invalid_value(idx)) {
-                err("struct has no such member", ast[1].loc);
+            if (idx == -1) {
+                throw t_bad_operands(".");
             }
             if (x.is_lvalue) {
                 res.is_lvalue = true;
@@ -1155,17 +1159,19 @@ namespace {
             a(res.value + " = getelementptr inbounds " + at
               + ", " + at + "* " + x.value + ", i32 0, i32 " + to_string(idx));
         } else if (ast.uu == "array_subscript") {
-            auto z = gen_add(gen_exp(ast[0], ctx), gen_exp(ast[1], ctx), ctx);
-            if (not is_pointer_type(z.type)) {
-                err("sum of arguments to [] is not a pointer", ast.loc);
+            try {
+                auto z = gen_add(gen_exp(ast[0], ctx),
+                                 gen_exp(ast[1], ctx), ctx);
+                res = dereference(z);
+            } catch (const t_bad_operands& e) {
+                throw t_bad_operands("[]");
             }
-            res = dereference(z);
         } else if (ast.uu == "postfix_increment") {
             auto e = gen_exp(ast[0], ctx, false);
             res = convert_lvalue_to_rvalue(e, ctx);
             if (not is_scalar_type(unqualify(res.type))
                 or not is_modifiable_lvalue(res.type)) {
-                err("cannot increment value of such type", ast[0].loc);
+                throw t_bad_operands("postfix ++");
             }
             auto z = gen_add(res, {"1", int_type}, ctx);
             gen_assign(e, z, ctx);
@@ -1174,7 +1180,7 @@ namespace {
             res = convert_lvalue_to_rvalue(e, ctx);
             if (not is_scalar_type(unqualify(res.type))
                 or not is_modifiable_lvalue(res.type)) {
-                err("cannot decrement value of such type", ast[0].loc);
+                throw t_bad_operands("postfix --");
             }
             auto z = gen_sub(res, {"1", int_type}, ctx);
             gen_assign(e, z, ctx);
@@ -1183,7 +1189,7 @@ namespace {
             auto z = convert_lvalue_to_rvalue(e, ctx);
             if (not is_scalar_type(unqualify(z.type))
                 or not is_modifiable_lvalue(z.type)) {
-                err("cannot increment value of such type", ast[0].loc);
+                throw t_bad_operands("prefix ++");
             }
             res = gen_add(z, {"1", int_type}, ctx);
             gen_assign(e, res, ctx);
@@ -1192,12 +1198,12 @@ namespace {
             auto z = convert_lvalue_to_rvalue(e, ctx);
             if (not is_scalar_type(unqualify(z.type))
                 or not is_modifiable_lvalue(z.type)) {
-                err("cannot increment value of such type", ast[0].loc);
+                throw t_bad_operands("prefix --");
             }
             res = gen_sub(z, {"1", int_type}, ctx);
             gen_assign(e, res, ctx);
         } else {
-            err("bad tree", ast.loc);
+            throw logic_error("unhandled operator " + ast.vv);
         }
         if (convert_lvalue and res.is_lvalue) {
             if (is_array_type(res.type)) {
@@ -1226,7 +1232,8 @@ namespace {
             while (i != 0) {
                 if (dd[i].uu == "array_size") {
                     if (dd[i].children.size() != 0) {
-                        auto arr_len = eval_const_exp(dd[i][0]);
+                        assert (dd[i][0].uu == "integer_constant");
+                        auto arr_len = stoull(dd[i][0].vv);
                         type = make_array_type(type, arr_len);
                     } else {
                         type = make_array_type(type);
@@ -1242,7 +1249,7 @@ namespace {
         }
     }
 
-    t_type make_base_type(const t_ast& t) {
+    t_type make_base_type(const t_ast& t, const t_ctx& ctx) {
         t_type res;
         set<string> specifiers;
         auto ts = [](auto s) {
@@ -1255,11 +1262,15 @@ namespace {
                 return make_struct_type(t[0].vv);
             }
             for (auto& c : t[0][0].children) {
-                auto base = make_base_type(c[0]);
+                auto base = make_base_type(c[0], ctx);
                 for (size_t i = 1; i < c.children.size(); i++) {
                     auto type = base;
                     string id;
                     unpack_declarator(type, id, c[i][0]);
+                    if (type.get_is_size_known() == false) {
+                        auto _type = ctx.get_type(type.get_name());
+                        type.set_size(_type.get_size(), _type.get_alignment());
+                    }
                     members.push_back({id, type});
                 }
             }
@@ -1319,25 +1330,15 @@ namespace {
         err("bad type ", t.loc);
     }
 
-    ull eval_const_exp(const t_ast& t) {
-        ull res;
-        if (t.uu == "integer_constant") {
-            res = stoull(t.vv);
-        } else {
-            err("only simple array size exprs are supported", t.loc);
-        }
-        return res;
-    }
-
     void gen_init(const t_exp_value& v, const t_ast& ini, t_ctx& ctx) {
         if (is_struct_type(v.type)) {
-            ull i = 0;
+            auto i = 0;
             for (auto& c : v.type.get_members()) {
                 gen_init(gen_struct_member(v, i, ctx), ini[i], ctx);
                 i++;
             }
         } else if (is_array_type(v.type)) {
-            ull i = 0;
+            auto i = 0;
             while (i < ini.children.size()) {
                 gen_init(gen_array_elt(v, i, ctx), ini[i], ctx);
                 i++;
@@ -1348,7 +1349,7 @@ namespace {
     }
 
     void gen_declaration(const t_ast& ast, t_ctx& ctx) {
-        auto base = make_base_type(ast[0]);
+        auto base = make_base_type(ast[0], ctx);
         if (is_struct_type(base)) {
             ctx.define_struct(base);
         }
@@ -1362,10 +1363,10 @@ namespace {
                 auto v = t_exp_value{ctx.get_var_asm_var(id), type, true};
                 if (is_scalar_type(type)) {
                     t_ast exp;
-                    if (ini.uu == "initializer_single_exp") {
+                    if (ini[0].uu != "initializer") {
                         exp = ini[0];
                     } else {
-                        if (ini[0].uu != "initializer_single_exp") {
+                        if (ini[0][0].uu == "initializer") {
                             err("expected expresion, got initializer list",
                                 ini[0].loc);
                         }
@@ -1375,7 +1376,7 @@ namespace {
                     gen_convert_assign(v, e, ctx);
                 } else {
                     if (is_struct_type(type)
-                        and ini.uu == "initializer_single_exp") {
+                        and ini[0].uu != "initializer") {
                         gen_assign(v, gen_exp(ini[0], ctx), ctx);
                     } else {
                         v.type = ctx.complete_type(v.type);
@@ -1514,7 +1515,11 @@ namespace {
 
     void add_labels(const t_ast& ast, t_ctx& ctx) {
         if (ast.uu == "label") {
-            ctx.add_label(ast);
+            try {
+                ctx.add_label(ast);
+            } catch (t_redefinition_error) {
+                err("label redefinition", ast.loc);
+            }
         }
         for (auto& c : ast.children) {
             add_labels(c, ctx);

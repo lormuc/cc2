@@ -71,6 +71,23 @@ auto delete_comments(const string& str) {
     return res;
 }
 
+auto get_line_pos(const string& src, int line) {
+    auto i = 0;
+    auto line_count = 0;
+    if (line_count != line) {
+        while (i < src.size()) {
+            if (i != 0 and src[i-1] == '\n') {
+                line_count++;
+                if (line_count == line) {
+                    break;
+                }
+            }
+            i++;
+        }
+    }
+    return i;
+}
+
 auto preprocess(const string& str) {
     string res;
     auto ignore = false;
@@ -135,31 +152,27 @@ int main(int argc, char** argv) {
             return 1;
         }
         os << res;
-    } catch (const t_error& e) {
-        cerr << (e.line() + 1) << ":" << (e.column() + 1) << ": error: ";
+    } catch (const t_compile_error& e) {
+        auto is_loc_valid = (e.get_loc() != t_loc());
+        if (is_loc_valid) {
+            cerr << (e.line() + 1) << ":" << (e.column() + 1) << ": ";
+        }
+        cerr << "error: ";
         cerr << e.what() << "\n";
-        size_t i = 0;
-        size_t line_count = 0;
-        if (line_count != e.line()) {
-            while (i < src.size()) {
-                if (i != 0 and src[i-1] == '\n') {
-                    line_count++;
-                    if (line_count == e.line()) {
-                        break;
-                    }
-                }
-                i++;
+        if (is_loc_valid) {
+            auto i = get_line_pos(src, e.line());
+            for (auto j = i; j < src.size() and src[j] != '\n'; j++) {
+                cerr << src[j];
             }
+            cerr << "\n";
+            for (size_t j = 0; j < e.column(); j++) {
+                cerr << " ";
+            }
+            cerr << "^";
+            cerr << "\n";
         }
-        for (auto j = i; j < src.size() and src[j] != '\n'; j++) {
-            cerr << src[j];
-        }
-        cerr << "\n";
-        for (size_t j = 0; j < e.column(); j++) {
-            cerr << " ";
-        }
-        cerr << "^";
-        cerr << "\n";
         return 1;
+    } catch (const exception& e) {
+        cerr << "unknown error: " << e.what() << "\n";
     }
 }

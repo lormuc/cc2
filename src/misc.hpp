@@ -6,41 +6,47 @@
 #include <fstream>
 #include <string>
 
+struct t_loc {
+    int line = -1;
+    int column = -1;
+    bool operator==(const t_loc& x) const {
+        return line == x.line and column == x.column;
+    }
+    bool operator!=(const t_loc& x) const {
+        return !(*this == x);
+    }
+    bool operator<(const t_loc& x) const {
+        return line < x.line or (line == x.line and column < x.column);
+    }
+    bool operator>(const t_loc& x) const {
+        return x < *this;
+    }
+};
+
+class t_compile_error : public std::runtime_error {
+    t_loc loc;
+public:
+    t_compile_error(const std::string& n_str, t_loc n_loc = t_loc())
+        : std::runtime_error(n_str), loc(n_loc) {
+    }
+    int line() const {
+        return loc.line;
+    }
+    int column() const {
+        return loc.column;
+    }
+    t_loc get_loc() const {
+        return loc;
+    }
+};
+
 template<class t>
 auto has(const std::vector<t>& c, const t& e) {
     return std::find(c.begin(), c.end(), e) != c.end();
 }
 
-struct t_loc {
-    unsigned line;
-    unsigned column;
-};
-
-class t_error : public std::runtime_error {
-    t_loc loc;
-public:
-    t_error(const char* n_str, const t_loc& n_loc)
-        : std::runtime_error(n_str) {
-        loc = n_loc;
-    }
-    t_error(const std::string& n_str, const t_loc& n_loc)
-        : std::runtime_error(n_str) {
-        loc = n_loc;
-    }
-    unsigned line() const {
-        return loc.line;
-    }
-    unsigned column() const {
-        return loc.column;
-    }
-};
-
 typedef unsigned long long ull;
+typedef unsigned ui;
 
-template<class t>
-bool is_invalid_value(t x) {
-    return x == t(-1);
-}
 std::string read_file_into_string(std::ifstream&);
 std::string print_bytes(const std::string&);
-void err(const std::string&, t_loc);

@@ -6,6 +6,16 @@
 #include "lex.hpp"
 #include "misc.hpp"
 
+class t_parse_error : public t_compile_error {
+public:
+    t_parse_error(const std::string& str, t_loc loc)
+        : t_compile_error(str, loc) {
+    }
+    t_parse_error(t_loc loc)
+        : t_compile_error("", loc) {
+    }
+};
+
 struct t_ast {
     std::string uu;
     std::string vv;
@@ -41,6 +51,17 @@ struct t_ast {
 
     t_ast(const std::vector<t_ast>& c) {
         children = c;
+    }
+
+    t_ast(const std::string& u, t_loc _loc) {
+        uu = u;
+        _loc = loc;
+    }
+
+    t_ast(const std::string& u, const std::string& v, t_loc _loc) {
+        uu = u;
+        vv = v;
+        _loc = loc;
     }
 
     bool operator==(const t_ast& a) const {

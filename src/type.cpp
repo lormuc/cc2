@@ -75,11 +75,13 @@ t_type_ptr& t_type_ptr::operator=(const t_type_ptr& x) {
     return *this;
 }
 
-
-t_type::t_type(t_type_kind k, const t_type& t, unsigned l) {
+t_type::t_type(t_type_kind k, const t_type& t, int len) {
     if (k == t_type_kind::_array) {
         kind = k;
-        array_length = l;
+        is_size_known = true;
+        size = len * t.get_size();
+        alignment = t.get_alignment();
+        array_length = len;
         subtype = new t_type(t);
     } else {
         throw std::runtime_error("bad type kind in this ctor");
@@ -88,9 +90,13 @@ t_type::t_type(t_type_kind k, const t_type& t, unsigned l) {
 
 t_type::t_type(t_type_kind k, const t_type& t) {
     if (k == t_type_kind::_pointer) {
+        is_size_known = true;
+        size = 8;
+        alignment = size;
         kind = k;
         subtype = new t_type(t);
     } else if (k == t_type_kind::_array) {
+        is_size_known = false;
         kind = k;
         subtype = new t_type(t);
         array_length = -1;
@@ -101,6 +107,7 @@ t_type::t_type(t_type_kind k, const t_type& t) {
 
 t_type::t_type(t_type_kind k, const std::string& n) {
     if (k == t_type_kind::_struct) {
+        is_size_known = false;
         kind = k;
         name = n;
     } else {
@@ -109,11 +116,30 @@ t_type::t_type(t_type_kind k, const std::string& n) {
 }
 
 t_type::t_type(t_type_kind k, const std::string& n,
-               const std::vector<t_struct_member>& m) {
+               const std::vector<t_struct_member>& mm) {
     if (k == t_type_kind::_struct) {
+        for (size_t idx = 0; idx < mm.size(); idx++) {
+            if (mm[idx].type.get_is_size_known() == false) {
+                throw t_incomplete_member_type_error(idx);
+            }
+        }
+        is_size_known = true;
+        alignment = 1;
+        size = 0;
+        for (size_t idx = 0; idx < mm.size(); idx++) {
+            size += mm[idx].type.get_size();
+            alignment = max(alignment, mm[idx].type.get_alignment());
+            auto al = ((idx + 1 < mm.size())
+                       ? mm[idx + 1].type.get_alignment()
+                       : alignment);
+            if ((size % al) != 0) {
+                size += al - (size % al);
+            }
+            idx++;
+        }
         kind = k;
         name = n;
-        members = m;
+        members = mm;
     } else {
         throw std::runtime_error("bad type kind in this ctor");
     }
@@ -131,6 +157,45 @@ t_type::t_type(t_type_kind k, const t_type& r, const std::vector<t_type>& p) {
 
 t_type::t_type(t_type_kind k) {
     kind = k;
+    if (k == t_type_kind::_char or k == t_type_kind::_s_char
+        or k == t_type_kind::_u_char) {
+        alignment = 1;
+        size = 1;
+        is_size_known = true;
+    } else if (k == t_type_kind::_short or k == t_type_kind::_u_short) {
+        alignment = 2;
+        size = 2;
+        is_size_known = true;
+    } else if (k == t_type_kind::_int or k == t_type_kind::_u_int) {
+        alignment = 4;
+        size = 4;
+        is_size_known = true;
+    } else if (k == t_type_kind::_long or k == t_type_kind::_u_long) {
+        alignment = 8;
+        size = 8;
+        is_size_known = true;
+    } else if (k == t_type_kind::_float) {
+        alignment = 4;
+        size = 4;
+        is_size_known = true;
+    } else if (k == t_type_kind::_double) {
+        alignment = 8;
+        size = 8;
+        is_size_known = true;
+    } else if (k == t_type_kind::_long_double) {
+        alignment = 8;
+        size = 8;
+        is_size_known = true;
+    }
+    kind = k;
+}
+
+void t_type::set_size(ull _size, ui _alignment) {
+    if (not is_size_known) {
+        size = _size;
+        alignment = _alignment;
+        is_size_known = true;
+    }
 }
 
 const t_type& t_type::get_return_type() const {
@@ -145,7 +210,7 @@ const t_type& t_type::get_element_type() const {
     return *subtype;
 }
 
-unsigned t_type::get_length() const {
+int t_type::get_length() const {
     if (kind == t_type_kind::_array) {
         return array_length;
     } else {
@@ -153,10 +218,14 @@ unsigned t_type::get_length() const {
     }
 }
 
-unsigned t_type::get_member_index(const std::string& id) const {
-    unsigned res = -1;
-    unsigned i = 0;
-    while (i != members.size()) {
+bool t_type::has_unknown_length() const {
+    return get_length() == -1;
+}
+
+int t_type::get_member_index(const std::string& id) const {
+    auto res = -1;
+    auto i = 0;
+    while (i != int(members.size())) {
         if (members[i].id == id) {
             res = i;
             break;
@@ -168,7 +237,7 @@ unsigned t_type::get_member_index(const std::string& id) const {
 
 bool t_type::is_complete() const {
     if (kind == t_type_kind::_array) {
-        return array_length != -1u;
+        return array_length != -1;
     } else if (kind == t_type_kind::_struct or kind == t_type_kind::_union) {
         return not members.empty();
     } else if (kind == t_type_kind::_void) {
@@ -202,7 +271,19 @@ t_type_kind t_type::get_kind() const {
     return kind;
 }
 
-t_type t_type::get_member_type(unsigned i) const {
+bool t_type::get_is_size_known() const {
+    return is_size_known;
+}
+
+ull t_type::get_size() const {
+    return size;
+}
+
+ui t_type::get_alignment() const {
+    return alignment;
+}
+
+t_type t_type::get_member_type(int i) const {
     return members[i].type;
 }
 
@@ -248,7 +329,7 @@ bool is_struct_type(const t_type& t) {
 }
 
 bool is_integral_type(const t_type& t) {
-    return static_cast<int>(t.get_kind()) < 9 or t == bool_type;
+    return static_cast<int>(t.get_kind()) < 9;
 }
 
 bool is_floating_type(const t_type& t) {
@@ -272,7 +353,7 @@ bool is_signed_integer_type(const t_type& t) {
 
 bool is_unsigned_integer_type(const t_type& t) {
     return (t == u_int_type or t == u_char_type or t == u_short_type
-            or t == u_long_type or t == char_type or t == bool_type);
+            or t == u_long_type or t == char_type);
 }
 
 bool t_type::operator==(const t_type& x) const {
@@ -283,7 +364,9 @@ bool t_type::operator==(const t_type& x) const {
             and name == x.name
             and array_length == x.array_length
             and members == x.members
-            and params == x.params);
+            and params == x.params
+            and size == x.size
+            and alignment == x.alignment);
 }
 
 bool compatible(const t_type& x, const t_type& y) {
@@ -296,7 +379,7 @@ bool compatible(const t_type& x, const t_type& y) {
                     and compatible(x.get_pointee_type(), y.get_pointee_type()));
         } else if (xk == t_type_kind::_array) {
             return (compatible(x.get_element_type(), y.get_element_type())
-                    and (x.get_length() == -1u or y.get_length() == -1u
+                    and (x.has_unknown_length() or y.has_unknown_length()
                          or x.get_length() == y.get_length()));
         } else if (xk == t_type_kind::_function) {
             auto& xp = x.get_params();
@@ -351,7 +434,7 @@ string stringify(const t_type& type, string id) {
     } else if (is_array_type(type)) {
         auto len = type.get_length();
         string len_str;
-        if (len != -1u) {
+        if (not type.has_unknown_length()) {
             len_str += to_string(len);
         }
         if (id != "") {

@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 
+#include <stdexcept>
 #include "misc.hpp"
 
 enum class t_type_kind {
@@ -53,36 +54,55 @@ public:
 
 class t_struct_member;
 
+class t_incomplete_member_type_error
+    : public std::runtime_error {
+    size_t idx;
+public:
+    t_incomplete_member_type_error(size_t _idx)
+        : std::runtime_error("member has incomplete type")
+        , idx(_idx)
+    {}
+    size_t get_idx() { return idx; }
+};
+
 class t_type {
     t_type_kind kind;
+    bool is_size_known = false;
+    ull size = -1;
+    ui alignment = 1;
     bool _const = false;
     bool _volatile = false;
     t_type_ptr subtype;
     std::string name;
     // array
-    unsigned array_length = -1;
+    int array_length = -1;
     // struct or union
     std::vector<t_struct_member> members;
     // function
     std::vector<t_type> params;
 public:
     t_type() {}
-    t_type(t_type_kind, const t_type&, unsigned);
+    t_type(t_type_kind, const t_type&, int);
     t_type(t_type_kind, const t_type&);
     t_type(t_type_kind, const std::string&);
     t_type(t_type_kind, const std::string&,
            const std::vector<t_struct_member>&);
     t_type(t_type_kind, const t_type&, const std::vector<t_type>&);
     t_type(t_type_kind);
+    void set_size(ull, ui);
     bool is_const() const;
     bool is_volatile() const;
     t_type_kind get_kind() const;
+    bool get_is_size_known() const;
+    ull get_size() const;
+    ui get_alignment() const;
     const t_type& get_return_type() const;
     const t_type& get_pointee_type() const;
     const t_type& get_element_type() const;
-    unsigned get_length() const;
-    unsigned get_member_index(const std::string&) const;
-    t_type get_member_type(unsigned i) const;
+    int get_length() const;
+    bool has_unknown_length() const;
+    int get_member_index(const std::string&) const;
+    t_type get_member_type(int i) const;
     bool is_complete() const;
     const std::string& get_name() const;
     const std::vector<t_struct_member>& get_members() const;
