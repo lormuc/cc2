@@ -217,7 +217,7 @@ namespace {
             advance();
             res.add_child(un_exp());
         } else if (has(un_ops, peek().uu)) {
-            res = t_ast("un_op", peek().uu, peek().loc);
+            res = t_ast(peek().uu, peek().loc);
             advance();
             res.add_child(cast_exp());
         } else {
@@ -348,7 +348,7 @@ namespace {
             auto loc = peek().loc;
             advance();
             auto t = subexp();
-            res = t_ast("bin_op", op, {res, t});
+            res = t_ast(op, {res, t});
             res.loc = loc;
         }
         return res;
@@ -412,7 +412,7 @@ namespace {
             auto y = exp();
             pop(":");
             auto z = cond_exp();
-            res = t_ast("tern_op", "?:", {res, y, z});
+            res = t_ast("?:", {res, y, z});
             res.loc = loc;
         }
         return res;
@@ -430,7 +430,7 @@ namespace {
             throw t_parse_error("expected assignment operator",
                                 peek().loc);
         }
-        auto res = t_ast("bin_op", op, peek().loc);
+        auto res = t_ast(op, peek().loc);
         advance();
         res.add_child(x);
         res.add_child(assign_exp());

@@ -22,6 +22,9 @@ const t_type void_type = t_type(t_type_kind::_void);
 const t_type string_type = make_pointer_type(char_type);
 const t_type void_pointer_type = make_pointer_type(void_type);
 const t_type bool_type = t_type(t_type_kind::_bool);
+const t_type uintptr_t_type = u_long_type;
+const t_type size_t_type = u_long_type;
+const t_type ptrdiff_t_type = long_type;
 
 string stringify(t_type_kind k) {
     vector<string> table = {
@@ -450,4 +453,16 @@ string stringify(const t_type& type, string id) {
         }
     }
     return res;
+}
+
+bool is_qualified_void(const t_type& t) {
+    return t.get_kind() == t_type_kind::_void;
+}
+
+bool is_object_type(const t_type& x) {
+    return true;
+}
+
+t_type unqualify(const t_type& t) {
+    return t;
 }

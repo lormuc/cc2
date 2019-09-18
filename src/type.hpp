@@ -137,6 +137,11 @@ bool is_scalar_type(const t_type&);
 bool is_signed_integer_type(const t_type&);
 bool is_unsigned_integer_type(const t_type&);
 bool compatible(const t_type&, const t_type&);
+
+t_type unqualify(const t_type&);
+bool is_object_type(const t_type& x);
+bool is_qualified_void(const t_type& t);
+
 std::string stringify(const t_type&, std::string id = "");
 
 extern const t_type char_type;
@@ -155,3 +160,6 @@ extern const t_type void_type;
 extern const t_type string_type;
 extern const t_type void_pointer_type;
 extern const t_type bool_type;
+extern const t_type uintptr_t_type;
+extern const t_type size_t_type;
+extern const t_type ptrdiff_t_type;
