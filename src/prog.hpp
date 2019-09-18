@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 struct t_asm_val {
     std::string type;
@@ -45,4 +46,5 @@ public:
     std::string apply_rel(const std::string& op, const t_asm_val& x,
                           const t_asm_val& y);
     std::string inc_ptr(const t_asm_val& x, const t_asm_val& y);
+    std::string call_printf(const std::vector<t_asm_val>& args);
 };

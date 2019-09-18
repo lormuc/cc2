@@ -130,3 +130,15 @@ string t_prog::inc_ptr(const t_asm_val& x, const t_asm_val& y) {
     return aa("getelementptr inbounds " + deref(x.type) + ", " + x.join()
               + ", " + y.join());
 }
+
+string t_prog::call_printf(const vector<t_asm_val>& args) {
+    string args_str;
+    for (auto& arg : args) {
+        if (args_str.empty()) {
+            args_str += arg.join();
+        } else {
+            args_str += ", " + arg.join();
+        }
+    }
+    return aa("call i32 (i8*, ...) @printf(" + args_str + ")");
+}
