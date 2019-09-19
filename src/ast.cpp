@@ -39,6 +39,7 @@ namespace {
     t_ast initializer();
     t_ast un_exp();
     t_ast cond_exp();
+    t_ast type_name();
 
     auto init(vector<t_lexeme>& ll) {
         lexeme_list = ll;
@@ -205,6 +206,24 @@ namespace {
     }
     def_rule(postfix_exp);
 
+    auto sizeof_exp_() {
+        auto res = t_ast("sizeof_exp", peek().loc);
+        pop("sizeof");
+        res.add_child(un_exp());
+        return res;
+    }
+    def_rule(sizeof_exp);
+
+    auto sizeof_type_() {
+        auto res = t_ast("sizeof_type", peek().loc);
+        pop("sizeof");
+        pop("(");
+        res.add_child(type_name());
+        pop(")");
+        return res;
+    }
+    def_rule(sizeof_type);
+
     auto un_exp_() {
         t_ast res;
         vector<string> un_ops = {"&", "*", "+", "-", "~", "!"};
@@ -220,6 +239,8 @@ namespace {
             res = t_ast(peek().uu, peek().loc);
             advance();
             res.add_child(cast_exp());
+        } else if (cmp("sizeof")) {
+            res = or_(sizeof_type, sizeof_exp);
         } else {
             res = postfix_exp();
         }

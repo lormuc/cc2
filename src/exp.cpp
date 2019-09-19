@@ -155,7 +155,7 @@ t_val gen_rel(const string& rel, t_val x, t_val y, const t_ctx& ctx) {
         } else if (is_floating_type(x.type)) {
             op = "fcmp o";
         } else {
-            op = "fcmp u";
+            op = "icmp u";
         }
         op += rel;
         t_val res;
@@ -704,6 +704,14 @@ t_val gen_exp_(const t_ast& ast, t_ctx& ctx,
         auto e = gen_exp(ast[1], ctx);
         auto t = make_type(ast[0], ctx);
         res = gen_conversion(t, e, ctx);
+    } else if (op == "sizeof_type") {
+        auto type = make_type(ast[0], ctx);
+        res = make_constant(type.get_size());
+    } else if (op == "sizeof_exp") {
+        prog.silence();
+        x = gen_exp(ast[0], ctx, false);
+        prog.silence();
+        res = make_constant(x.type.get_size());
     } else {
         throw logic_error("unhandled operator " + op);
     }

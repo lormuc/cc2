@@ -40,16 +40,6 @@ string func_line(const string& x) {
     return string("    ") + x + "\n";
 }
 
-string fun(const string& func_name, const t_val& a0,
-           const t_val& a1) {
-    return func_name + " " + a0.value + ", " + a1.value;
-}
-
-string fun(const string& func_name, const string& a0,
-           const string& a1) {
-    return func_name + " " + a0 + ", " + a1;
-}
-
 void t_ctx::define_var(const std::string& name, t_type type) {
     type = complete_type(type);
     auto id = prog.def_var(get_asm_type(type));

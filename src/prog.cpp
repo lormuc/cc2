@@ -21,12 +21,14 @@ string t_prog::make_new_id() {
 }
 
 void t_prog::a(const std::string& line) {
-    func_body += func_line(line);
+    if (not _silence) {
+        func_body += func_line(line);
+    }
 }
 
 string t_prog::aa(const std::string& line) {
     auto res = make_new_id();
-    func_body += func_line(res + " = " + line);
+    a(res + " = " + line);
     return res;
 }
 
@@ -155,4 +157,8 @@ string t_prog::phi(const t_asm_val& x, const string& l0,
 
 void t_prog::ret(const t_asm_val& x) {
     a("ret " + x.join());
+}
+
+void t_prog::silence() {
+    _silence ^= 1;
 }

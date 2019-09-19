@@ -13,6 +13,7 @@ struct t_asm_val {
 };
 
 class t_prog {
+    bool _silence = false;
     int str_cnt = 0;
     int label_cnt = 0;
     int id_cnt = 0;
@@ -52,4 +53,5 @@ public:
     std::string phi(const t_asm_val& x, const std::string& l0,
                     const t_asm_val& y, const std::string& l1);
     void ret(const t_asm_val&);
+    void silence();
 };
