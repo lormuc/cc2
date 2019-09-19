@@ -40,10 +40,6 @@ string func_line(const string& x) {
     return string("    ") + x + "\n";
 }
 
-void a(const string& s) {
-    prog.a(s);
-}
-
 string fun(const string& func_name, const t_val& a0,
            const t_val& a1) {
     return func_name + " " + a0.value + ", " + a1.value;
@@ -52,14 +48,6 @@ string fun(const string& func_name, const t_val& a0,
 string fun(const string& func_name, const string& a0,
            const string& a1) {
     return func_name + " " + a0 + ", " + a1;
-}
-
-void let(const t_val& v, const string& s) {
-    a(v.value + " = " + s);
-}
-
-void let(const string& v, const string& s) {
-    a(v + " = " + s);
 }
 
 void t_ctx::define_var(const std::string& name, t_type type) {
@@ -384,7 +372,7 @@ void gen_statement(const t_ast& c, t_ctx& ctx) {
         }
     } else if (c.uu == "return") {
         auto val = gen_exp(c.children[0], ctx);
-        a("ret " + ctx.make_asm_arg(val));
+        prog.ret(ctx.get_asm_val(val));
     } else if (c.uu == "compound_statement") {
         gen_compound_statement(c, ctx);
     } else if (c.uu == "while") {
@@ -503,7 +491,7 @@ auto gen_function(const t_ast& ast) {
     for (auto& c : ast.children) {
         gen_block_item(c, ctx);
     }
-    a("ret i32 0");
+    prog.ret({"i32", "0"});
     prog.def_main();
 }
 

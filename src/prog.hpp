@@ -18,12 +18,14 @@ class t_prog {
     int id_cnt = 0;
     std::string asm_funcs;
     std::string global_storage;
-public:
     std::string asm_type_defs;
     std::string func_body;
     std::string func_var_alloc;
 
+    void a(const std::string&);
     std::string aa(const std::string&);
+
+public:
     std::string def_str(const std::string& str);
     std::string make_new_id();
     void def_main();
@@ -32,7 +34,6 @@ public:
     std::string assemble();
     void put_label(const std::string&, bool = true);
     std::string make_label();
-    void a(const std::string&);
     void cond_br(const std::string&, const std::string&, const std::string&);
     void br(const std::string&);
     void noop();
@@ -50,4 +51,5 @@ public:
     std::string bit_not(const t_asm_val& x);
     std::string phi(const t_asm_val& x, const std::string& l0,
                     const t_asm_val& y, const std::string& l1);
+    void ret(const t_asm_val&);
 };

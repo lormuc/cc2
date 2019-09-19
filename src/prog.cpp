@@ -152,3 +152,7 @@ string t_prog::phi(const t_asm_val& x, const string& l0,
     return aa("phi " + x.type + " [ " + x.name + ", " + l0 + " ], [ "
               + y.name + ", " + l1 + " ]");
 }
+
+void t_prog::ret(const t_asm_val& x) {
+    a("ret " + x.join());
+}
