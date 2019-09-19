@@ -86,10 +86,8 @@ std::string t_ctx::get_asm_label(const t_ast& ast) const {
 
 string t_ctx::get_asm_type(const t_type& t, bool expand) const {
     string res;
-    if (t == bool_type) {
-        res = "i1";
-    } else if (t == char_type or t == u_char_type
-               or t == s_char_type) {
+    if (t == char_type or t == u_char_type
+        or t == s_char_type) {
         res = "i8";
     } else if (t == short_type or t == u_short_type) {
         res = "i16";
@@ -368,7 +366,7 @@ void gen_statement(const t_ast& c, t_ctx& ctx) {
                 c.children[0].loc);
         }
         auto cmp_res = prog.make_new_id();
-        prog.cond_br(gen_is_zero(cond_val, ctx).value, cond_false, cond_true);
+        prog.cond_br(gen_is_zero_i1(cond_val, ctx), cond_false, cond_true);
         put_label(cond_true, false);
         gen_statement(c.children[1], ctx);
         prog.br(end);
@@ -397,7 +395,7 @@ void gen_statement(const t_ast& c, t_ctx& ctx) {
         auto loop_body = make_label();
         put_label(loop_begin);
         auto cond_val = gen_exp(c.children[0], nctx);
-        prog.cond_br(gen_is_zero(cond_val, ctx).value,
+        prog.cond_br(gen_is_zero_i1(cond_val, ctx),
                      nctx.get_loop_end(), loop_body);
         put_label(loop_body);
         gen_statement(c.children[1], nctx);
@@ -413,7 +411,7 @@ void gen_statement(const t_ast& c, t_ctx& ctx) {
         gen_statement(c.children[0], nctx);
         put_label(nctx.get_loop_body_end());
         auto cond_val = gen_exp(c.children[1], nctx);
-        prog.cond_br(gen_is_zero(cond_val, ctx).value,
+        prog.cond_br(gen_is_zero_i1(cond_val, ctx),
                      nctx.get_loop_end(), loop_begin);
         put_label(nctx.get_loop_end());
     } else if (c.uu == "for") {
@@ -430,7 +428,7 @@ void gen_statement(const t_ast& c, t_ctx& ctx) {
         auto& ctrl_exp = c[1];
         if (not ctrl_exp.children.empty()) {
             auto cond_val = gen_exp(ctrl_exp[0], nctx);
-            prog.cond_br(gen_is_zero(cond_val, ctx).value,
+            prog.cond_br(gen_is_zero_i1(cond_val, ctx),
                          nctx.get_loop_end(), loop_body);
             put_label(loop_body, false);
         } else {

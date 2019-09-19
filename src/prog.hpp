@@ -47,4 +47,7 @@ public:
                           const t_asm_val& y);
     std::string inc_ptr(const t_asm_val& x, const t_asm_val& y);
     std::string call_printf(const std::vector<t_asm_val>& args);
+    std::string bit_not(const t_asm_val& x);
+    std::string phi(const t_asm_val& x, const std::string& l0,
+                    const t_asm_val& y, const std::string& l1);
 };

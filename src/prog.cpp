@@ -142,3 +142,13 @@ string t_prog::call_printf(const vector<t_asm_val>& args) {
     }
     return aa("call i32 (i8*, ...) @printf(" + args_str + ")");
 }
+
+string t_prog::bit_not(const t_asm_val& x) {
+    return aa("xor " + x.join() + ", -1");
+}
+
+string t_prog::phi(const t_asm_val& x, const string& l0,
+                   const t_asm_val& y, const string& l1) {
+    return aa("phi " + x.type + " [ " + x.name + ", " + l0 + " ], [ "
+              + y.name + ", " + l1 + " ]");
+}

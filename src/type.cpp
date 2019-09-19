@@ -21,7 +21,6 @@ const t_type long_double_type = t_type(t_type_kind::_long_double);
 const t_type void_type = t_type(t_type_kind::_void);
 const t_type string_type = make_pointer_type(char_type);
 const t_type void_pointer_type = make_pointer_type(void_type);
-const t_type bool_type = t_type(t_type_kind::_bool);
 const t_type uintptr_t_type = u_long_type;
 const t_type size_t_type = u_long_type;
 const t_type ptrdiff_t_type = long_type;
@@ -46,8 +45,7 @@ string stringify(t_type_kind k) {
         "struct",
         "union",
         "function",
-        "enum",
-        "bool",
+        "enum"
     };
     auto ik = int(k);
     assert(ik >= 0 and ik < table.size());

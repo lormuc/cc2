@@ -8,6 +8,9 @@
 #include "type.hpp"
 #include "prog.hpp"
 
+const auto false_val = t_asm_val{"i32", "0"};
+const auto true_val = t_asm_val{"i32", "1"};
+
 struct t_val {
     std::string value;
     t_type type;
@@ -204,7 +207,9 @@ t_val gen_shl(t_val x, t_val y, const t_ctx& ctx);
 t_val gen_shr(t_val x, t_val y, const t_ctx& ctx);
 t_val gen_struct_member(const t_val& v, int i, t_ctx& ctx);
 t_val gen_is_zero(const t_val& x, const t_ctx& ctx);
+std::string gen_is_zero_i1(const t_val& x, const t_ctx& ctx);
 t_val gen_is_nonzero(const t_val& x, const t_ctx& ctx);
+std::string gen_is_nonzero_i1(const t_val& x, const t_ctx& ctx);
 t_val gen_convert_assign(const t_val& lhs, const t_val& rhs,
                                t_ctx& ctx);
 t_val gen_assign(const t_val& lhs, const t_val& rhs,
