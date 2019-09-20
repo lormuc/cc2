@@ -13,11 +13,13 @@
 
 using namespace std;
 
-auto err(const string& str, t_loc loc = t_loc()) {
+t_prog prog;
+
+void gen_compound_statement(const t_ast& ast, t_ctx ctx);
+
+void err(const string& str, t_loc loc) {
     throw t_compile_error(str, loc);
 }
-
-t_prog prog;
 
 string make_anon_struct_id() {
     static auto count = 0u;
@@ -36,33 +38,7 @@ void put_label(const std::string& s, bool f) {
     prog.put_label(s, f);
 }
 
-string func_line(const string& x) {
-    return string("    ") + x + "\n";
-}
-
-void t_ctx::define_var(const std::string& name, t_type type) {
-    type = complete_type(type);
-    auto id = prog.def_var(get_asm_type(type));
-    var_map.map[name] = {type, id};
-}
-
-void t_ctx::add_label(const t_ast& ast) {
-    auto it = label_map.find(ast.vv);
-    if (it != label_map.end()) {
-        throw t_redefinition_error();
-    }
-    label_map[ast.vv] = make_label();
-}
-
-std::string t_ctx::get_asm_label(const t_ast& ast) const {
-    auto it = label_map.find(ast.vv);
-    if (it == label_map.end()) {
-        throw t_unknown_id_error();
-    }
-    return (*it).second;
-}
-
-string t_ctx::get_asm_type(const t_type& t, bool expand) const {
+string t_ctx::asmt(const t_type& t, bool expand) const {
     string res;
     if (t == char_type or t == u_char_type
         or t == s_char_type) {
@@ -82,12 +58,12 @@ string t_ctx::get_asm_type(const t_type& t, bool expand) const {
     } else if (t == void_pointer_type) {
         res += "i8*";
     } else if (is_pointer_type(t)) {
-        res += get_asm_type(t.get_pointee_type());
+        res += asmt(t.get_pointee_type());
         res += "*";
     } else if (is_array_type(t)) {
         res += "[";
         res += to_string(t.get_length()) + " x ";
-        res += get_asm_type(t.get_element_type());
+        res += asmt(t.get_element_type());
         res += "]";
     } else if (is_struct_type(t)) {
         if (expand) {
@@ -98,20 +74,20 @@ string t_ctx::get_asm_type(const t_type& t, bool expand) const {
                     res += ", ";
                 }
                 start = false;
-                res += get_asm_type(m.type);
+                res += asmt(m.type);
             }
             res += " }";
         } else {
-            res += type_map.get_asm_var(t.get_name());
+            res += get_type_data(t.get_name()).asm_id;
         }
     } else {
-        throw logic_error("get_asm_type " + stringify(t) + " fail");
+        throw logic_error("asmt " + stringify(t) + " fail");
     }
     return res;
 }
 
-t_asm_val t_ctx::get_asm_val(const t_val& val) const {
-    auto type = get_asm_type(val.type);
+t_asm_val t_ctx::asmv(const t_val& val) const {
+    auto type = asmt(val.type);
     if (val.is_lvalue) {
         type += "*";
     }
@@ -127,7 +103,7 @@ t_type t_ctx::complete_type(const t_type& t) const {
         return t;
     }
     if (not t.is_complete()) {
-        return type_map.get_type(t.get_name());
+        return get_type_data(t.get_name()).type;
     }
     auto mm = t.get_members();
     for (auto& m : mm) {
@@ -135,35 +111,6 @@ t_type t_ctx::complete_type(const t_type& t) const {
     }
     return make_struct_type(t.get_name(), mm);
 }
-
-string t_ctx::define_struct(t_type type) {
-    assert(is_struct_type(type));
-    auto res = prog.make_new_id();
-    auto& name = type.get_name();
-    if (type_map.map.count(name) != 0) {
-        if (not type_map.map[name].type.is_complete()) {
-            type_map.map[name].type = type;
-            res = type_map.map[name].asm_var;
-        }
-    } else {
-        type_map.map[name] = {type, res};
-    }
-    auto& mm = type.get_members();
-    if (not mm.empty()) {
-        for (auto& m : mm) {
-            if (is_struct_type(m.type)
-                and not m.type.get_members().empty()) {
-                define_struct(m.type);
-            }
-        }
-        prog.def_struct(res, get_asm_type(type, true));
-    }
-    return res;
-}
-
-t_type make_base_type(const t_ast&, const t_ctx&);
-
-void gen_compound_statement(const t_ast&, const t_ctx&);
 
 string unpack_declarator(t_type& type, const t_ast& t) {
     auto p = &(t[0]);
@@ -197,39 +144,45 @@ string unpack_declarator(t_type& type, const t_ast& t) {
     }
 }
 
-t_type make_base_type(const t_ast& t, const t_ctx& ctx) {
+t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
     t_type res;
     set<string> specifiers;
     auto ts = [](auto s) {
         return t_ast("type_specifier", s);
     };
-    if (t.children.size() == 1
-        and t[0].uu == "struct_or_union_specifier") {
-        vector<t_struct_member> members;
-        if (t[0].children.empty()) {
-            return make_struct_type(t[0].vv);
+    if (ast.children.size() == 1
+        and ast[0].uu == "struct_or_union_specifier") {
+        if (ast[0].children.empty()) {
+            return make_struct_type(ast[0].vv);
         }
-        for (auto& c : t[0][0].children) {
+        vector<t_struct_member> members;
+        for (auto& c : ast[0][0].children) {
             auto base = make_base_type(c[0], ctx);
             for (size_t i = 1; i < c.children.size(); i++) {
                 auto type = base;
-                auto id = unpack_declarator(type, c[i][0]);
+                auto name = unpack_declarator(type, c[i][0]);
                 if (type.get_is_size_known() == false) {
-                    auto _type = ctx.get_type(type.get_name());
+                    auto& _type = ctx.get_type_data(type.get_name()).type;
                     type.set_size(_type.get_size(), _type.get_alignment());
                 }
-                members.push_back({id, type});
+                members.push_back({name, type});
             }
         }
-        string id;
-        if (t[0].vv.empty()) {
-            id = make_anon_struct_id();
+        string name;
+        if (ast[0].vv.empty()) {
+            name = make_anon_struct_id();
         } else {
-            id = t[0].vv;
+            name = ast[0].vv;
         }
-        return make_struct_type(id, members);
+        auto type = make_struct_type(name, members);
+        auto id = prog.make_new_id();
+        if (not members.empty()) {
+            prog.def_struct(id, ctx.asmt(type, true));
+        }
+        ctx.def_type(name, {type, id});
+        return type;
     }
-    for (auto& c : t.children) {
+    for (auto& c : ast.children) {
         if (not (c.uu == "type_specifier"
                  and has(type_specifiers, c.vv))) {
             err("bad type specifier", c.loc);
@@ -274,7 +227,7 @@ t_type make_base_type(const t_ast& t, const t_ctx& ctx) {
     } else if (cmp({"void"})) {
         return void_type;
     }
-    err("bad type ", t.loc);
+    err("bad type ", ast.loc);
 }
 
 void gen_init(const t_val& v, const t_ast& ini, t_ctx& ctx) {
@@ -297,36 +250,31 @@ void gen_init(const t_val& v, const t_ast& ini, t_ctx& ctx) {
 
 void gen_declaration(const t_ast& ast, t_ctx& ctx) {
     auto base = make_base_type(ast[0], ctx);
-    if (is_struct_type(base)) {
-        ctx.define_struct(base);
-    }
     for (size_t i = 1; i < ast.children.size(); i++) {
-        auto type = base;
-        auto id = unpack_declarator(type, ast[i][0]);
-        ctx.define_var(id, type);
+        auto type = ctx.complete_type(base);
+        auto name = unpack_declarator(type, ast[i][0]);
+        auto asm_id = prog.def_var(ctx.asmt(type));
+        auto val = t_val{asm_id, type, true};
+        ctx.def_var(name, val);
         if (ast[i].children.size() > 1) {
             auto& ini = ast[i][1];
-            auto v = t_val{ctx.get_var_asm_var(id), type, true};
             if (is_scalar_type(type)) {
                 t_ast exp;
                 if (ini[0].uu != "initializer") {
                     exp = ini[0];
                 } else {
                     if (ini[0][0].uu == "initializer") {
-                        err("expected expresion, got initializer list",
-                            ini[0].loc);
+                        err("expected expresion", ini[0].loc);
                     }
                     exp = ini[0][0];
                 }
                 auto e = gen_exp(exp, ctx);
-                gen_convert_assign(v, e, ctx);
+                gen_convert_assign(val, e, ctx);
             } else {
-                if (is_struct_type(type)
-                    and ini[0].uu != "initializer") {
-                    gen_assign(v, gen_exp(ini[0], ctx), ctx);
+                if (is_struct_type(type) and ini[0].uu != "initializer") {
+                    gen_assign(val, gen_exp(ini[0], ctx), ctx);
                 } else {
-                    v.type = ctx.complete_type(v.type);
-                    gen_init(v, ini, ctx);
+                    gen_init(val, ini, ctx);
                 }
             }
         }
@@ -362,42 +310,42 @@ void gen_statement(const t_ast& c, t_ctx& ctx) {
         }
     } else if (c.uu == "return") {
         auto val = gen_exp(c.children[0], ctx);
-        prog.ret(ctx.get_asm_val(val));
+        prog.ret(ctx.asmv(val));
     } else if (c.uu == "compound_statement") {
         gen_compound_statement(c, ctx);
     } else if (c.uu == "while") {
         auto nctx = ctx;
-        nctx.set_loop_end(make_label());
-        nctx.set_loop_body_end(make_label());
+        nctx.loop_end(make_label());
+        nctx.loop_body_end(make_label());
         auto loop_begin = make_label();
         auto loop_body = make_label();
         put_label(loop_begin);
         auto cond_val = gen_exp(c.children[0], nctx);
         prog.cond_br(gen_is_zero_i1(cond_val, ctx),
-                     nctx.get_loop_end(), loop_body);
+                     nctx.loop_end(), loop_body);
         put_label(loop_body);
         gen_statement(c.children[1], nctx);
-        put_label(nctx.get_loop_body_end());
+        put_label(nctx.loop_body_end());
         prog.br(loop_begin);
-        put_label(nctx.get_loop_end());
+        put_label(nctx.loop_end());
     } else if (c.uu == "do_while") {
         auto nctx = ctx;
-        nctx.set_loop_end(make_label());
-        nctx.set_loop_body_end(make_label());
+        nctx.loop_end(make_label());
+        nctx.loop_body_end(make_label());
         auto loop_begin = make_label();
         put_label(loop_begin);
         gen_statement(c.children[0], nctx);
-        put_label(nctx.get_loop_body_end());
+        put_label(nctx.loop_body_end());
         auto cond_val = gen_exp(c.children[1], nctx);
         prog.cond_br(gen_is_zero_i1(cond_val, ctx),
-                     nctx.get_loop_end(), loop_begin);
-        put_label(nctx.get_loop_end());
+                     nctx.loop_end(), loop_begin);
+        put_label(nctx.loop_end());
     } else if (c.uu == "for") {
         auto loop_begin = make_label();
         auto loop_body = make_label();
         auto nctx = ctx;
-        nctx.set_loop_end(make_label());
-        nctx.set_loop_body_end(make_label());
+        nctx.loop_end(make_label());
+        nctx.loop_body_end(make_label());
         auto init_exp = c[0];
         if (not init_exp.children.empty()) {
             gen_exp(init_exp[0], nctx);
@@ -407,36 +355,36 @@ void gen_statement(const t_ast& c, t_ctx& ctx) {
         if (not ctrl_exp.children.empty()) {
             auto cond_val = gen_exp(ctrl_exp[0], nctx);
             prog.cond_br(gen_is_zero_i1(cond_val, ctx),
-                         nctx.get_loop_end(), loop_body);
+                         nctx.loop_end(), loop_body);
             put_label(loop_body, false);
         } else {
             put_label(loop_body);
         }
         gen_statement(c[3], nctx);
-        put_label(nctx.get_loop_body_end());
+        put_label(nctx.loop_body_end());
         auto& post_exp = c[2];
         if (not post_exp.children.empty()) {
             gen_exp(post_exp[0], nctx);
         }
         prog.br(loop_begin);
-        put_label(nctx.get_loop_end());
+        put_label(nctx.loop_end());
     } else if (c.uu == "break") {
-        if (ctx.get_loop_end() == "") {
+        if (ctx.loop_end() == "") {
             err("break not in loop", c.loc);
         }
-        prog.br(ctx.get_loop_end());
+        prog.br(ctx.loop_end());
     } else if (c.uu == "continue") {
-        if (ctx.get_loop_body_end() == "") {
+        if (ctx.loop_body_end() == "") {
             err("continue not in loop", c.loc);
         }
-        prog.br(ctx.get_loop_body_end());
+        prog.br(ctx.loop_body_end());
     } else if (c.uu == "goto") {
-        prog.br(ctx.get_asm_label(c[0]));
+        prog.br(ctx.get_label_data(c[0].vv));
     } else if (c.uu == "label") {
-        put_label(ctx.get_asm_label(c));
+        put_label(ctx.get_label_data(c.vv));
         gen_statement(c[0], ctx);
     } else {
-        throw runtime_error("unknown statement type");
+        err("unknown statement", c.loc);
     }
 }
 
@@ -448,27 +396,27 @@ void gen_block_item(const t_ast& ast, t_ctx& ctx) {
     }
 }
 
-void gen_compound_statement(const t_ast& ast, const t_ctx& ctx) {
-    auto nctx = ctx;
+void gen_compound_statement(const t_ast& ast, t_ctx ctx) {
+    ctx.enter_scope();
     if (ast.children.size() != 0) {
         for (auto& c : ast.children) {
-            gen_block_item(c, nctx);
+            gen_block_item(c, ctx);
         }
     } else {
         prog.noop();
     }
 }
 
-void add_labels(const t_ast& ast, t_ctx& ctx) {
+void def_labels(const t_ast& ast, t_ctx& ctx) {
     if (ast.uu == "label") {
         try {
-            ctx.add_label(ast);
+            ctx.def_label(ast.vv, make_label());
         } catch (t_redefinition_error) {
             err("label redefinition", ast.loc);
         }
     }
     for (auto& c : ast.children) {
-        add_labels(c, ctx);
+        def_labels(c, ctx);
     }
 }
 
@@ -476,8 +424,8 @@ auto gen_function(const t_ast& ast) {
     auto& func_name = ast.vv;
     assert(func_name == "main");
     t_ctx ctx;
-    ctx.set_func_name(func_name);
-    add_labels(ast, ctx);
+    ctx.func_name(func_name);
+    def_labels(ast, ctx);
     for (auto& c : ast.children) {
         gen_block_item(c, ctx);
     }
