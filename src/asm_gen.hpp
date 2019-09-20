@@ -17,6 +17,27 @@ struct t_val {
     bool is_lvalue = false;
 };
 
+// class t_val {
+//     std::string asm_id;
+//     t_type type;
+//     bool is_lvalue;
+//     bool is_constant;
+//     union {
+//         char _char;
+//         signed char _s_char;
+//         unsigned char _u_char;
+//         short _short;
+//         unsigned short _u_short;
+//         int _int;
+//         unsigned _u_int;
+//         long long _long;
+//         unsigned long long _u_long;
+//         float _float;
+//         double _double;
+//         double _long_double;
+//     }
+// };
+
 class t_conversion_error : public t_compile_error {
 public:
     t_conversion_error(const t_type& a, const t_type& b)
@@ -138,6 +159,9 @@ t_val gen_array_elt(const t_val& v, int i, t_ctx& ctx);
 t_val gen_exp(const t_ast& ast, t_ctx& ctx, bool convert_lvalue = true);
 t_type make_base_type(const t_ast& t, t_ctx& ctx);
 std::string unpack_declarator(t_type& type, const t_ast& t);
+t_val make_constant(ull);
+t_val make_constant(int);
+t_val make_constant(double);
 std::string gen_asm(const t_ast&);
 
 extern t_prog prog;

@@ -80,6 +80,8 @@ string t_ctx::asmt(const t_type& t, bool expand) const {
         } else {
             res += get_type_data(t.get_name()).asm_id;
         }
+    } else if (is_enum_type(t)) {
+        res += "i32";
     } else {
         throw logic_error("asmt " + stringify(t) + " fail");
     }
@@ -180,6 +182,34 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
             prog.def_struct(id, ctx.asmt(type, true));
         }
         ctx.def_type(name, {type, id});
+        return type;
+    } else if (ast.children.size() == 1 and ast[0].uu == "enum") {
+        auto name = (ast[0].vv == "") ? make_anon_struct_id() : ast[0].vv;
+        if (ast[0].children.empty()) {
+            try {
+                auto type = ctx.get_type_data(name).type;
+                if (not is_enum_type(type)) {
+                    err(name + " is not an enumeration", ast[0].loc);
+                }
+                return type;
+            } catch (t_undefined_name_error) {
+                err("undefined enum", ast.loc);
+            }
+        }
+        int cnt = 0;
+        for (auto& e : ast[0].children) {
+            if (e.children.size() == 1) {
+                cnt = stoi(gen_exp(e[0], ctx).value);
+            }
+            ctx.def_var(e.vv, make_constant(cnt));
+            cnt++;
+        }
+        auto type = make_enum_type(name);
+        try {
+            ctx.def_type(name, {type});
+        } catch (t_redefinition_error) {
+            err("redefinition of enum " + name, ast.loc);
+        }
         return type;
     }
     for (auto& c : ast.children) {

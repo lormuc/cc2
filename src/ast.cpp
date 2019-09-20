@@ -520,13 +520,51 @@ namespace {
     }
     def_rule(struct_or_union_specifier);
 
+    auto enumerator_() {
+        auto res = t_ast("enumerator", peek().loc);
+        res.vv = pop("identifier");
+        if (cmp("=")) {
+            advance();
+            res.add_child(const_exp());
+        }
+        return res;
+    }
+    def_rule(enumerator);
+
+    auto enum_specifier_() {
+        auto res = t_ast("enum", peek().loc);
+        pop("enum");
+        if (cmp("identifier")) {
+            res.vv = peek().vv;
+            advance();
+        }
+        if (cmp("{")) {
+            advance();
+            while (true) {
+                res.add_child(enumerator());
+                if (not cmp(",")) {
+                    break;
+                }
+                advance();
+            }
+            pop("}");
+        }
+        if (peek().loc == res.loc) {
+            throw t_parse_error(res.loc);
+        }
+        return res;
+    }
+    def_rule(enum_specifier);
+
     auto type_specifier_() {
         if (has(type_specifiers, peek().uu)) {
             auto res = t_ast("type_specifier", peek().uu, peek().loc);
             advance();
             return res;
-        } else {
+        } else if (cmp("struct") or cmp("union")) {
             return struct_or_union_specifier();
+        } else {
+            return enum_specifier();
         }
     }
     def_rule(type_specifier);

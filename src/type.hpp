@@ -125,9 +125,11 @@ t_type make_array_type(const t_type&, unsigned);
 t_type make_struct_type(const std::string&,
                         const std::vector<t_struct_member>&);
 t_type make_struct_type(const std::string&);
+t_type make_enum_type(const std::string&);
 bool is_array_type(const t_type&);
 bool is_function_type(const t_type&);
 bool is_struct_type(const t_type&);
+bool is_enum_type(const t_type&);
 bool is_pointer_type(const t_type&);
 bool is_integral_type(const t_type&);
 bool is_floating_type(const t_type&);

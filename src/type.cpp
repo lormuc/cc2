@@ -111,6 +111,12 @@ t_type::t_type(t_type_kind k, const std::string& n) {
         is_size_known = false;
         kind = k;
         name = n;
+    } else if (k == t_type_kind::_enum) {
+        size = 4;
+        alignment = 4;
+        is_size_known = true;
+        kind = k;
+        name = n;
     } else {
         throw std::runtime_error("bad type kind in this ctor");
     }
@@ -305,6 +311,10 @@ t_type make_struct_type(const string& id,
     return t_type(t_type_kind::_struct, id, members);
 }
 
+t_type make_enum_type(const string& name) {
+    return t_type(t_type_kind::_enum, name);
+}
+
 t_type make_struct_type(const string& id) {
     return t_type(t_type_kind::_struct, id);
 }
@@ -329,8 +339,12 @@ bool is_struct_type(const t_type& t) {
     return t.get_kind() == t_type_kind::_struct;
 }
 
+bool is_enum_type(const t_type& t) {
+    return t.get_kind() == t_type_kind::_enum;
+}
+
 bool is_integral_type(const t_type& t) {
-    return static_cast<int>(t.get_kind()) < 9;
+    return static_cast<int>(t.get_kind()) < 9 or is_enum_type(t);
 }
 
 bool is_floating_type(const t_type& t) {
@@ -349,7 +363,7 @@ bool is_scalar_type(const t_type& t) {
 
 bool is_signed_integer_type(const t_type& t) {
     return (t == int_type or t == s_char_type or t == short_type
-            or t == long_type);
+            or t == long_type or is_enum_type(t));
 }
 
 bool is_unsigned_integer_type(const t_type& t) {

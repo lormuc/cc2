@@ -56,22 +56,21 @@ t_type make_type(const t_ast& ast, t_ctx& ctx) {
 void gen_int_promotion(t_val& x, const t_ctx& ctx) {
     if (x.type == char_type or x.type == s_char_type
         or x.type == u_char_type or x.type == short_type
-        or x.type == u_short_type) {
+        or x.type == u_short_type or is_enum_type(x.type)) {
         x = gen_conversion(int_type, x, ctx);
     }
 }
 
 t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
-    t_val res;
+    auto res = v;
+    res.type = t;
     if (t == void_type) {
-        res.type = t;
         return res;
     }
     if (not is_scalar_type(t) or not is_scalar_type(v.type)) {
         throw t_conversion_error(v.type, t);
     }
     if (not compatible(t, v.type)) {
-        res.type = t;
         auto x = ctx.asmv(v);
         auto w = ctx.asmt(t);
         string op;
@@ -85,7 +84,7 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
                     op = "zext";
                 }
             } else {
-                return v;
+                return res;
             }
         } else if (is_pointer_type(t) and is_integral_type(v.type)) {
             op = "inttoptr";
@@ -99,7 +98,7 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
             } else if (t.get_size() > v.type.get_size()) {
                 op = "fpext";
             } else {
-                return v;
+                return res;
             }
         } else if (is_floating_type(t) and is_integral_type(v.type)) {
             if (is_signed_integer_type(v.type)) {
@@ -117,8 +116,6 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
             throw t_conversion_error(v.type, t);
         }
         res.value = prog.convert(op, x, w);
-    } else {
-        res = v;
     }
     return res;
 }
