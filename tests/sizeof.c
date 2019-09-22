@@ -8,7 +8,8 @@ int main() {
     };
     int a[4] = {1, 3, 4, 5};
     int x = 9;
-    printf("%d\n", sizeof(x = x + 5));
+    printf("%d\n", sizeof(sizeof(x = x + 5)));
+    printf("%d\n", sizeof(sizeof(sizeof(x = x + 5))));
     printf("%d\n", x);
     printf("%d\n", (sizeof(struct ttt)
                     >= sizeof(char) + sizeof(long) + 5*sizeof(int)));

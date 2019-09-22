@@ -1,10 +1,10 @@
 #pragma once
 
-#include "misc.hpp"
+#include <string>
 
-t_val make_constant(ull);
-t_val make_constant(int);
-t_val make_constant(double);
+#include "asm_gen.hpp"
+#include "ast.hpp"
+
 t_val gen_convert_assign(const t_val& lhs, const t_val& rhs, t_ctx& ctx);
 t_val gen_assign(const t_val& lhs, const t_val& rhs, t_ctx& ctx);
 t_val gen_array_elt(const t_val& v, int i, t_ctx& ctx);

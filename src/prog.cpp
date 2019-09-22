@@ -15,6 +15,12 @@ namespace {
     }
 }
 
+void t_prog::append(std::string& x, const std::string& y) {
+    if (not silence()) {
+        x += y;
+    }
+}
+
 string t_prog::make_new_id() {
     id_cnt++;
     return "%_" + to_string(id_cnt);
@@ -22,7 +28,7 @@ string t_prog::make_new_id() {
 
 void t_prog::a(const std::string& line) {
     if (not _silence) {
-        func_body += func_line(line);
+        append(func_body, func_line(line));
     }
 }
 
@@ -49,32 +55,33 @@ void t_prog::put_label(const string& l, bool f) {
     if (f) {
         a("br label " + l);
     }
-    func_body += l.substr(1) + ":\n";
+    append(func_body, l.substr(1) + ":\n");
 }
 
 string t_prog::def_str(const string& str) {
     auto len = str.length() + 1;
     auto name = "@str_" + to_string(str_cnt);
     str_cnt++;
-    global_storage += name;
-    global_storage += " = private unnamed_addr constant [";
-    global_storage += to_string(len);
-    global_storage += " x i8] c\"";
-    global_storage += print_bytes(str);
-    global_storage += "\\00\"\n";
+    append(global_storage, name);
+    append(global_storage, " = private unnamed_addr constant [");
+    append(global_storage, to_string(len));
+    append(global_storage, " x i8] c\"");
+    append(global_storage, print_bytes(str));
+    append(global_storage, "\\00\"\n");
     return name;
 }
 
 void t_prog::def_main() {
-    asm_funcs += "define i32 @"; asm_funcs += "main";
-    asm_funcs += "() {\n";
-    asm_funcs += func_var_alloc;
-    asm_funcs += func_body;
-    asm_funcs += "}\n";
+    append(asm_funcs, "define i32 @");
+    append(asm_funcs, "main");
+    append(asm_funcs, "() {\n");
+    append(asm_funcs, func_var_alloc);
+    append(asm_funcs, func_body);
+    append(asm_funcs, "}\n");
 }
 
 void t_prog::def_struct(const string& name, const string& type) {
-    asm_type_defs += name + " = type " + type + "\n";
+    append(asm_type_defs, name + " = type " + type + "\n");
 }
 
 string t_prog::assemble() {
@@ -95,7 +102,7 @@ void t_prog::noop() {
 
 string t_prog::def_var(const string& type) {
     auto res = make_new_id();
-    func_var_alloc += func_line(res + " = alloca " + type);
+    append(func_var_alloc, func_line(res + " = alloca " + type));
     return res;
 }
 
@@ -120,6 +127,12 @@ string t_prog::apply(const string& op, const t_asm_val& x,
 string t_prog::apply_rel(const string& op, const t_asm_val& x,
                          const t_asm_val& y) {
     auto tmp = aa(op + " " + x.join() + ", " + y.name);
+    return convert("zext", {"i1", tmp}, "i32");
+}
+
+string t_prog::apply_rel(const string& op, const t_asm_val& x,
+                         const string& y) {
+    auto tmp = aa(op + " " + x.join() + ", " + y);
     return convert("zext", {"i1", tmp}, "i32");
 }
 
@@ -159,6 +172,10 @@ void t_prog::ret(const t_asm_val& x) {
     a("ret " + x.join());
 }
 
-void t_prog::silence() {
-    _silence ^= 1;
+void t_prog::silence(bool x) {
+    _silence = x;
+}
+
+bool t_prog::silence() {
+    return _silence;
 }

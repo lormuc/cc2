@@ -33,13 +33,13 @@ namespace {
     }
 
     void gen_init(const t_val& v, const t_ast& ini, t_ctx& ctx) {
-        if (is_struct_type(v.type)) {
+        if (is_struct_type(v.type())) {
             auto i = 0;
-            for (auto& c : v.type.get_members()) {
+            for (auto& c : v.type().get_members()) {
                 gen_init(gen_struct_member(v, i, ctx), ini[i], ctx);
                 i++;
             }
-        } else if (is_array_type(v.type)) {
+        } else if (is_array_type(v.type())) {
             auto i = 0;
             while (i < ini.children.size()) {
                 gen_init(gen_array_elt(v, i, ctx), ini[i], ctx);
@@ -54,9 +54,9 @@ namespace {
         auto base = make_base_type(ast[0], ctx);
         for (size_t i = 1; i < ast.children.size(); i++) {
             auto type = ctx.complete_type(base);
-            auto name = unpack_declarator(type, ast[i][0]);
+            auto name = unpack_declarator(type, ast[i][0], ctx);
             auto asm_id = prog.def_var(ctx.asmt(type));
-            auto val = t_val{asm_id, type, true};
+            auto val = t_val(asm_id, type, true);
             ctx.def_var(name, val);
             if (ast[i].children.size() > 1) {
                 auto& ini = ast[i][1];
@@ -89,7 +89,7 @@ namespace {
             auto cond_false = make_label();
             auto end = make_label();
             auto cond_val = gen_exp(c.children[0], ctx);
-            if (not is_scalar_type(cond_val.type)) {
+            if (not is_scalar_type(cond_val.type())) {
                 err("controlling expression must have scalar type",
                     c.children[0].loc);
             }
@@ -287,11 +287,11 @@ string t_ctx::asmt(const t_type& t, bool expand) const {
 }
 
 t_asm_val t_ctx::asmv(const t_val& val) const {
-    auto type = asmt(val.type);
-    if (val.is_lvalue) {
+    auto type = asmt(val.type());
+    if (val.is_lvalue()) {
         type += "*";
     }
-    return t_asm_val{type, val.value};
+    return t_asm_val{type, val.asm_id()};
 }
 
 t_type t_ctx::complete_type(const t_type& t) const {
@@ -320,7 +320,7 @@ void put_label(const std::string& s, bool f) {
     prog.put_label(s, f);
 }
 
-string unpack_declarator(t_type& type, const t_ast& t) {
+string unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx) {
     auto p = &(t[0]);
     while (not (*p).children.empty()) {
         type = make_pointer_type(type);
@@ -336,9 +336,17 @@ string unpack_declarator(t_type& type, const t_ast& t) {
         auto& op = dd[i].uu;
         if (op == "array_size") {
             if (dd[i].children.size() != 0) {
-                assert (dd[i][0].uu == "integer_constant");
-                auto arr_len = stoull(dd[i][0].vv);
-                type = make_array_type(type, arr_len);
+                auto& size_exp = dd[i][0];
+                auto size_val = gen_exp(size_exp, ctx);
+                if (not (is_integral_type(size_val.type())
+                         and size_val.is_constant())) {
+                    err("bad array size", size_exp.loc);
+                }
+                if (is_signed_type(size_val.type())
+                    and size_val.s_val() <= 0) {
+                    err("array size must be positive", size_exp.loc);
+                }
+                type = make_array_type(type, size_val.u_val());
             } else {
                 type = make_array_type(type);
             }
@@ -348,7 +356,7 @@ string unpack_declarator(t_type& type, const t_ast& t) {
     if (dd[0].uu == "identifier") {
         return dd[0].vv;
     } else {
-        return unpack_declarator(type, dd[0]);
+        return unpack_declarator(type, dd[0], ctx);
     }
 }
 
@@ -368,7 +376,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
             auto base = make_base_type(c[0], ctx);
             for (size_t i = 1; i < c.children.size(); i++) {
                 auto type = base;
-                auto name = unpack_declarator(type, c[i][0]);
+                auto name = unpack_declarator(type, c[i][0], ctx);
                 if (type.get_is_size_known() == false) {
                     auto& _type = ctx.get_type_data(type.get_name()).type;
                     type.set_size(_type.get_size(), _type.get_alignment());
@@ -402,12 +410,12 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
                 err("undefined enum", ast.loc);
             }
         }
-        int cnt = 0;
+        auto cnt = 0;
         for (auto& e : ast[0].children) {
             if (e.children.size() == 1) {
-                cnt = stoi(gen_exp(e[0], ctx).value);
+                cnt = stoi(gen_exp(e[0], ctx).asm_id());
             }
-            ctx.def_var(e.vv, make_constant(cnt));
+            ctx.def_var(e.vv, cnt);
             cnt++;
         }
         auto type = make_enum_type(name);

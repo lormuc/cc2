@@ -137,6 +137,9 @@ bool is_arithmetic_type(const t_type&);
 bool is_scalar_type(const t_type&);
 bool is_signed_integer_type(const t_type&);
 bool is_unsigned_integer_type(const t_type&);
+bool is_signed_type(const t_type& t);
+bool is_unsigned_type(const t_type& t);
+bool is_integer_type(const t_type& t);
 bool compatible(const t_type&, const t_type&);
 
 t_type unqualify(const t_type&);

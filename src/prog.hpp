@@ -25,6 +25,7 @@ class t_prog {
 
     void a(const std::string&);
     std::string aa(const std::string&);
+    void append(std::string&, const std::string&);
 
 public:
     std::string def_str(const std::string& str);
@@ -47,11 +48,14 @@ public:
                         const std::string& t);
     std::string apply_rel(const std::string& op, const t_asm_val& x,
                           const t_asm_val& y);
+    std::string apply_rel(const std::string& op, const t_asm_val& x,
+                          const std::string& y);
     std::string inc_ptr(const t_asm_val& x, const t_asm_val& y);
     std::string call_printf(const std::vector<t_asm_val>& args);
     std::string bit_not(const t_asm_val& x);
     std::string phi(const t_asm_val& x, const std::string& l0,
                     const t_asm_val& y, const std::string& l1);
     void ret(const t_asm_val&);
-    void silence();
+    void silence(bool);
+    bool silence();
 };

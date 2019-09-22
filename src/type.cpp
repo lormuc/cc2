@@ -194,7 +194,6 @@ t_type::t_type(t_type_kind k) {
         size = 8;
         is_size_known = true;
     }
-    kind = k;
 }
 
 void t_type::set_size(ull _size, ui _alignment) {
@@ -347,6 +346,10 @@ bool is_integral_type(const t_type& t) {
     return static_cast<int>(t.get_kind()) < 9 or is_enum_type(t);
 }
 
+bool is_integer_type(const t_type& t) {
+    return is_signed_integer_type(t) or is_unsigned_integer_type(t);
+}
+
 bool is_floating_type(const t_type& t) {
     auto i = static_cast<int>(t.get_kind());
     return i >= 9 and i < 12;
@@ -363,12 +366,22 @@ bool is_scalar_type(const t_type& t) {
 
 bool is_signed_integer_type(const t_type& t) {
     return (t == int_type or t == s_char_type or t == short_type
+            or t == long_type);
+}
+
+bool is_signed_type(const t_type& t) {
+    return (t == s_char_type or t == short_type or t == int_type
             or t == long_type or is_enum_type(t));
+}
+
+bool is_unsigned_type(const t_type& t) {
+    return (t == char_type or t == u_char_type or t == u_short_type
+            or t == u_int_type or t == u_long_type);
 }
 
 bool is_unsigned_integer_type(const t_type& t) {
     return (t == u_int_type or t == u_char_type or t == u_short_type
-            or t == u_long_type or t == char_type);
+            or t == u_long_type);
 }
 
 bool t_type::operator==(const t_type& x) const {
