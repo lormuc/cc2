@@ -27,9 +27,7 @@ string t_prog::make_new_id() {
 }
 
 void t_prog::a(const std::string& line) {
-    if (not _silence) {
-        append(func_body, func_line(line));
-    }
+    append(func_body, func_line(line));
 }
 
 string t_prog::aa(const std::string& line) {
