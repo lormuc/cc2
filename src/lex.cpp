@@ -2,157 +2,287 @@
 #include <algorithm>
 #include <iostream>
 #include <vector>
+#include <set>
+#include <list>
+#include <iterator>
+#include <tuple>
 
 #include "misc.hpp"
 #include "lex.hpp"
 
 using namespace std;
 
+const vector<string> operators = {
+    "...", "<<=", ">>=",
+
+    "&&", "||", "==", "!=", "<=", ">=", "++", "--", "<<", ">>",
+    "=", "*=", "/=", "%=", "+=", "-=", "&=", "^=", "|=", "->", "##",
+
+    "<", ">", "=", "?", ":", "{", "}", "(", ")", ";", "-", "~", "!",
+    "+", "/", "*", "%", "&", "|", "^", "[", "]", ",", ".", "#",
+};
+
 namespace {
-    auto err(const string& str, t_loc loc = t_loc()) {
-        throw t_compile_error(str, loc);
+    bool is_digit(int c) {
+        return '0' <= c and c <= '9';
     }
-
-    auto is_id_char(char ch) {
-        return ch == '_' or isalnum(ch);
-    }
-
-    auto is_dec_digit(char ch) {
-        return '0' <= ch and ch <= '9';
-    }
-
-    auto in(char ch, char a, char b) {
-        return a <= ch and ch <= b;
-    }
-
-    auto is_hex_digit(char ch) {
-        return in(ch, '0', '9') or in(ch, 'a', 'f') or in(ch, 'A', 'F');
-    }
-
-    auto is_oct_digit(char ch) {
-        return in(ch, '0', '7');
+    bool is_nondigit(int c) {
+        return c == '_' or isalpha(c);
     }
 }
 
-vector<t_lexeme> lex(const string& source) {
-    vector<t_lexeme> res;
-    auto i = source.begin();
-    t_loc loc = {0, 0};
-    auto old_loc = loc;
-    auto push = [&](const string& x, const string& y = "") {
-        t_lexeme l;
-        l.uu = x;
-        l.vv = y;
-        l.loc.line = old_loc.line;
-        l.loc.column = old_loc.column;
-        res.push_back(l);
-    };
-    auto advance = [&](unsigned d = 1) {
-        while (d != 0) {
-            i++;
-            loc.column++;
-            if (*(i-1) == '\n') {
-                loc.line++;
-                loc.column = 0;
+class t_lexer {
+    const string& str;
+    size_t idx;
+    t_loc cur_loc;
+    t_loc lexeme_loc;
+    bool in_include = false;
+    list<t_lexeme> result;
+
+    void err(const string& str) {
+        throw t_compile_error("lexing error: " + str, lexeme_loc);
+    }
+
+    auto set_state(const auto& x) {
+        idx = get<0>(x);
+        cur_loc = get<1>(x);
+    }
+
+    auto get_state() {
+        return make_tuple(idx, cur_loc);
+    }
+
+    void check_if_in_include() {
+        auto n = result.size();
+        if (n < 2) {
+            return;
+        }
+        auto& l1 = *next(result.end(), -1);
+        in_include = ((*next(result.end(), -2)).uu == "#"
+                      and (l1.uu == "identifier" and l1.vv == "include")
+                      and (n == 2
+                           or (*next(result.end(), -3)).uu == "newline"));
+    }
+    void push(const string& x, const string& val = "") {
+        result.push_back({x, val, lexeme_loc});
+    }
+    string advance(int d = 1) {
+        string res;
+        while (d != 0 and idx < str.length()) {
+            res += str[idx];
+            idx++;
+            cur_loc.column++;
+            if (str[idx-1] == '\n') {
+                cur_loc.line++;
+                cur_loc.column = 0;
             }
             d--;
         }
-    };
-    while (i != source.end()) {
-        old_loc = loc;
-        vector<string> tt = {
-            "...",
-            "&&", "||", "==", "!=", "<=", ">=", "++", "--", "<<", ">>",
-            "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=", "^=", "|=",
-            "<", ">", "=", "?", ":", "{", "}", "(", ")", ";", "-", "~", "!",
-            "+", "/", "*", "%", "&", "|", "^", "[", "]", ",", ".",
-        };
-        auto found = false;
-        for (auto& t : tt) {
-            if (equal(t.begin(), t.end(), i)) {
-                push(t, t);
-                found = true;
-                advance(t.size());
+        return res;
+    }
+    bool end() {
+        return idx >= str.length();
+    }
+    int peek(int n = 0) {
+        if (idx + n < str.length()) {
+            return str[idx + n];
+        }
+        return -1;
+    }
+    bool cmp(const std::string& x) {
+        return str.compare(idx, x.length(), x);
+    }
+    bool cmp_or(const std::string& x) {
+        auto res = x.find(peek()) != string::npos;
+        return res;
+    }
+    bool match(const std::string& x) {
+        if (str.compare(idx, x.length(), x) == 0) {
+            advance(x.length());
+            return true;
+        } else {
+            return false;
+        }
+    }
+    bool operator_() {
+        for (auto& op : operators) {
+            if (match(op)) {
+                push(op);
+                return true;
+            }
+        }
+        return false;
+    }
+    bool pp_number() {
+        string val;
+        if (is_digit(peek())) {
+            val += advance();
+        } else if (peek() == '.' and is_digit(peek(1))) {
+            val += advance();
+            val += advance();
+        } else {
+            return false;
+        }
+        while (true) {
+            if (is_nondigit(peek()) or is_digit(peek()) or peek() == '.') {
+                val += advance();
+            } else if ((peek() == 'e' or peek() == 'E')
+                       and (peek(1) == '+' or peek(1) == '-')) {
+                val += advance();
+                val += advance();
+            } else {
                 break;
             }
         }
-        if (found) {
-            continue;
+        push("pp_number", val);
+        return true;
+    }
+    bool identifier() {
+        if (not is_nondigit(peek())) {
+            return false;
         }
-        auto ch = *i;
-        advance();
         string val;
-        val += ch;
-        if (is_dec_digit(ch)) {
-            while (i != source.end() and isdigit(*i)) {
-                val += *i;
-                advance();
-            }
-            if (i != source.end()) {
-                if (*i == '.') {
-                    val += *i;
-                    advance();
-                    while (i != source.end() and isdigit(*i)) {
-                        val += *i;
-                        advance();
-                    }
-                    push("floating_constant", val);
-                } else {
-                    push("integer_constant", val);
-                }
-            }
-        } else if (is_id_char(ch)) {
-            while (i != source.end() and is_id_char(*i)) {
-                val += *i;
-                advance();
-            }
-            vector<string> keywords = {
-                "int", "return", "if", "else", "while", "for", "do",
-                "continue", "break", "struct", "float",
-                "char", "unsigned", "void", "auto", "case", "const",
-                "default", "double", "enum", "extern", "goto", "long",
-                "register", "short", "signed", "sizeof", "static", "struct",
-                "switch", "typedef", "union", "volatile"
-            };
-            if (has(keywords, val)) {
-                push(val, val);
+        val += advance();
+        while (is_nondigit(peek()) or is_digit(peek())) {
+            val += advance();
+        }
+        push("identifier", val);
+        check_if_in_include();
+        return true;
+    }
+    bool string_literal() {
+        if (peek() != '"') {
+            return false;
+        }
+        string val;
+        val += advance();
+        while (peek() != '"') {
+            if (peek() == '\\' and peek(1) == '"') {
+                val += '"';
             } else {
-                push("identifier", val);
-            }
-        } else if (ch == '"') {
-            string val;
-            while (*i != '"') {
-                if (*i == '\\') {
-                    advance();
-                    auto j = i;
-                    if (*j == 'x') {
-                        j++;
-                        while (is_hex_digit(*j)) {
-                            j++;
-                        }
-                        val += char(stoul(string(i, j)));
-                    } else if (is_oct_digit(*j)) {
-                        while (is_oct_digit(*j)) {
-                                j++;
-                        }
-                        val += char(stoul(string(i, j)));
-                    } else if (*j == '\'' or *j == '\"' or *j == '\\') {
-                        val += *j;
-                        j++;
-                    } else if (*j == 'n') {
-                        val += '\n';
-                        j++;
-                    }
-                    advance(j - i);
+                if (not end() and peek() != '\n') {
+                    val += advance();
                 } else {
-                    val += *i;
-                    advance();
+                    err("unbalanced quote");
                 }
             }
-            push("string_literal", val);
+        }
+        val += advance();
+        push("string_literal", val);
+        return true;
+    }
+    bool char_constant() {
+        if (peek() != '\'') {
+            return false;
+        }
+        string val;
+        val += advance();
+        while (peek() != '\'') {
+            if (peek() == '\\' and peek(1) == '\'') {
+                val += '\'';
+            } else {
+                if (not end() and peek() != '\n') {
+                    val += advance();
+                } else {
+                    err("unbalanced quote");
+                }
+            }
+        }
+        val += advance();
+        if (val.empty()) {
+            err("empty char constant");
+        }
+        push("char_constant", val);
+        return true;
+    }
+    bool white_space() {
+        if (cmp_or(" \n\t\v\f")) {
+            if (peek() == '\n') {
+                push("newline");
+                in_include = false;
+            }
             advance();
+            return true;
+        } else if (match("/*")) {
+            while (not match("*/")) {
+                if (end()) {
+                    err("unterminated comment");
+                }
+                advance();
+            }
+            return true;
+        } else {
+            return false;
         }
     }
-    push("eof");
-    return res;
+    bool header_name() {
+        if (not in_include) {
+            return false;
+        }
+        auto old_state = get_state();
+        if (peek() == '<') {
+            string val;
+            val += advance();
+            if (peek() == '>') {
+                err("empty header name");
+            }
+            while (peek() != '>') {
+                if (peek() == '\n') {
+                    set_state(old_state);
+                    return false;
+                }
+                val += advance();
+            }
+            val += advance();
+            push("header_name", val);
+            return true;
+        } else if (peek() == '"') {
+            string val;
+            val += advance();
+            if (peek() == '"') {
+                err("empty header name");
+            }
+            while (peek() != '"') {
+                if (peek() == '\n') {
+                    set_state(old_state);
+                    return false;
+                }
+                val += advance();
+            }
+            val += advance();
+            push("header_name", val);
+            return true;
+        } else {
+            return false;
+        }
+    }
+    bool single() {
+        push("single", advance());
+        return true;
+    }
+public:
+    void go() {
+        while (not end()) {
+            lexeme_loc = cur_loc;
+            (white_space() or header_name() or pp_number() or operator_()
+             or char_constant() or string_literal() or identifier()
+             or single());
+        }
+        push("eof");
+    }
+    const list<t_lexeme>& get_result() {
+        return result;
+    }
+    t_lexer(const string& _str)
+        : str(_str)
+        , idx(0)
+        , cur_loc(0, 0)
+        , lexeme_loc(cur_loc) {
+    }
+};
+
+list<t_lexeme> lex(const string& str) {
+    t_lexer lexer(str);
+    lexer.go();
+    return lexer.get_result();
 }

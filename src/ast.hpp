@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <list>
 
 #include "lex.hpp"
 #include "misc.hpp"
@@ -9,7 +10,7 @@
 class t_parse_error : public t_compile_error {
 public:
     t_parse_error(const std::string& str, t_loc loc)
-        : t_compile_error(str, loc) {
+        : t_compile_error("parse error: " + str, loc) {
     }
     t_parse_error(t_loc loc)
         : t_compile_error("", loc) {
@@ -81,6 +82,6 @@ struct t_ast {
     }
 };
 
-t_ast parse_program(std::vector<t_lexeme>&);
+t_ast parse_program(const std::list<t_lexeme>&);
 
 extern const std::vector<std::string> type_specifiers;

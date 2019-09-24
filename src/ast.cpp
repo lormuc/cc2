@@ -4,6 +4,7 @@
 #include <functional>
 #include <iostream>
 #include <cassert>
+#include <list>
 
 #include "misc.hpp"
 #include "ast.hpp"
@@ -20,8 +21,8 @@ extern const vector<string> type_specifiers = {
 };
 
 namespace {
-    vector<t_lexeme> lexeme_list;
-    size_t idx;
+    list<t_lexeme> lexeme_list;
+    list<t_lexeme>::iterator ll_it;
 
     t_ast exp();
     t_ast assign_exp();
@@ -41,26 +42,26 @@ namespace {
     t_ast cond_exp();
     t_ast type_name();
 
-    auto init(vector<t_lexeme>& ll) {
+    auto init(const list<t_lexeme>& ll) {
         lexeme_list = ll;
-        idx = 0;
+        ll_it = lexeme_list.begin();
     }
 
     auto& peek() {
-        assert(idx < lexeme_list.size());
-        return lexeme_list[idx];
+        assert(ll_it != lexeme_list.end());
+        return *ll_it;
     }
 
     auto get_state() {
-        return idx;
+        return ll_it;
     }
 
-    auto set_state(auto _idx) {
-        idx = _idx;
+    auto set_state(auto i) {
+        ll_it = i;
     }
 
     auto advance() {
-        idx++;
+        ll_it++;
     }
 
     auto add_child_opt(auto& res, auto f) {
@@ -125,7 +126,7 @@ namespace {
     }
 
     auto end() {
-        return idx >= lexeme_list.size() or cmp("eof");
+        return ll_it == lexeme_list.end() or cmp("eof");
     }
 
     auto pop(const string& name) {
@@ -870,7 +871,7 @@ namespace {
     def_rule(function_definition);
 }
 
-t_ast parse_program(vector<t_lexeme>& n_ll) {
+t_ast parse_program(const list<t_lexeme>& n_ll) {
     init(n_ll);
     auto res = t_ast("program", peek().loc);
     while (not end()) {

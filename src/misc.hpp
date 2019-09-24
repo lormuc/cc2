@@ -21,6 +21,14 @@ struct t_loc {
     bool operator>(const t_loc& x) const {
         return x < *this;
     }
+    t_loc(int x, int y)
+        : line(x)
+        , column(y) {
+    }
+    t_loc()
+        : line(-1)
+        , column(-1) {
+    }
 };
 
 class t_compile_error : public std::runtime_error {
@@ -40,13 +48,13 @@ public:
     }
 };
 
-template<class t>
+typedef unsigned long long ull;
+typedef unsigned ui;
+
+template <class t>
 auto has(const std::vector<t>& c, const t& e) {
     return std::find(c.begin(), c.end(), e) != c.end();
 }
-
-typedef unsigned long long ull;
-typedef unsigned ui;
 
 std::string read_file_into_string(std::ifstream&);
 std::string print_bytes(const std::string&);

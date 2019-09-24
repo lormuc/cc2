@@ -3,6 +3,7 @@
 #include <string>
 #include <initializer_list>
 #include <array>
+#include <list>
 
 #include "misc.hpp"
 
@@ -12,4 +13,4 @@ struct t_lexeme {
     t_loc loc;
 };
 
-std::vector<t_lexeme> lex(const std::string&);
+std::list<t_lexeme> lex(const std::string&);

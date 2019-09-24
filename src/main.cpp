@@ -10,6 +10,7 @@
 #include <functional>
 #include <initializer_list>
 #include <unordered_map>
+#include <set>
 
 #include "ast.hpp"
 #include "asm_gen.hpp"
@@ -20,6 +21,12 @@
 using namespace std;
 
 ofstream log;
+
+void sep() {
+    log << "\n";
+    log << "-------------\n";
+    log << "\n";
+}
 
 void print(const t_ast& t, unsigned level = 0) {
     auto print_spaces = [&](unsigned n) {
@@ -39,36 +46,15 @@ void print(const t_ast& t, unsigned level = 0) {
     log.flush();
 }
 
-auto delete_comments(const string& str) {
-    string res;
-    auto i = size_t(0);
-    auto in_comment = false;
-    while (i != str.length()) {
-        if (not in_comment) {
-            if (str.compare(i, 2, "/*") == 0) {
-                in_comment = true;
-                res += "  ";
-                i += 2;
-            } else {
-                res += str[i];
-                i++;
-            }
-        } else {
-            if (str.compare(i, 2, "*/") == 0) {
-                in_comment = false;
-                res += "  ";
-                i += 2;
-            } else {
-                if (str[i] == '\n') {
-                    res += '\n';
-                } else {
-                    res += ' ';
-                }
-                i++;
-            }
+void print(const list<t_lexeme>& ll) {
+    for (auto& l : ll) {
+        log << l.uu;
+        if (not l.vv.empty()) {
+            log << " ||| " << print_bytes(l.vv);
         }
+        log << "\n";
     }
-    return res;
+    log.flush();
 }
 
 auto get_line_pos(const string& src, int line) {
@@ -88,26 +74,81 @@ auto get_line_pos(const string& src, int line) {
     return i;
 }
 
-auto preprocess(const string& str) {
-    string res;
-    auto ignore = false;
-    auto line_beginning = true;
-    for (auto ch : str) {
-        if (ignore) {
-            if (ch == '\n') {
-                res += ch;
-                ignore = false;
-            }
-        } else {
-            if (line_beginning and ch == '#') {
-                ignore = true;
+auto preprocess(list<t_lexeme>& ll) {
+    auto it = ll.begin();
+    while (it != ll.end()) {
+        auto in_pp = ((*it).uu == "#");
+        while (it != ll.end() and (*it).uu != "newline") {
+            if (in_pp) {
+                it = ll.erase(it);
             } else {
-                res += ch;
+                it++;
             }
         }
-        line_beginning = (ch == '\n');
+        if (it != ll.end()) {
+            it++;
+        }
     }
-    return res;
+}
+
+auto escape_seqs(list<t_lexeme>& ll) {
+    for (auto& l : ll) {
+        if (l.uu == "char_constant" or l.uu == "string_literal") {
+            string new_str;
+            size_t i = 0;
+            while (i < l.vv.length()) {
+                if (i+1 < l.vv.length()
+                    and l.vv[i] == '\\' and l.vv[i+1] == 'n') {
+                    new_str += "\n";
+                    i += 2;
+                } else {
+                    new_str += l.vv[i];
+                    i++;
+                }
+            }
+            l.vv = new_str;
+        }
+    }
+}
+
+const set<string> keywords = {
+    "int", "return", "if", "else", "while", "for", "do",
+    "continue", "break", "struct", "float",
+    "char", "unsigned", "void", "auto", "case", "const",
+    "default", "double", "enum", "extern", "goto", "long",
+    "register", "short", "signed", "sizeof", "static", "struct",
+    "switch", "typedef", "union", "volatile"
+};
+
+auto convert_lexemes(list<t_lexeme>& ll) {
+    auto it = ll.begin();
+    while (it != ll.end()) {
+        if ((*it).uu == "newline") {
+            it = ll.erase(it);
+            continue;
+        }
+        if ((*it).uu == "identifier") {
+            if (keywords.count((*it).vv) != 0) {
+                (*it).uu = (*it).vv;
+                (*it).vv = "";
+            }
+        } else if ((*it).uu == "pp_number") {
+            if ((*it).vv.find('.') != string::npos or
+                (((*it).vv.find('e') != string::npos
+                  or (*it).vv.find('E') != string::npos)
+                 and not ((*it).vv.length() >= 2
+                          and ((*it).vv[1] == 'x'
+                               or (*it).vv[1] == 'X')))) {
+                (*it).uu = "floating_constant";
+            } else {
+                (*it).uu = "integer_constant";
+            }
+        } else if ((*it).uu == "string_literal"
+                   or (*it).uu == "char_constant") {
+            (*it).vv = (*it).vv.substr(1, (*it).vv.length() - 2);
+        }
+        it++;
+    }
 }
 
 int main(int argc, char** argv) {
@@ -122,27 +163,19 @@ int main(int argc, char** argv) {
     }
 
     log.open("log.txt");
-    auto sep = [&]() {
-        log << "\n";
-        log << "-------------\n";
-        log << "\n";
-    };
-
     auto src = read_file_into_string(is);
-    auto lexemes = lex(preprocess(delete_comments(src)));
-
-    for (auto& l : lexemes) {
-        log << l.uu;
-        if (not l.vv.empty()) {
-            log << " -- " << print_bytes(l.vv);
-        }
-        log << "\n";
-    }
-    sep();
-    log.flush();
 
     try {
-        auto ast = parse_program(lexemes);
+        auto ll = lex(src);
+        print(ll);
+        sep();
+        preprocess(ll);
+        print(ll);
+        escape_seqs(ll);
+        convert_lexemes(ll);
+        print(ll);
+        sep();
+        auto ast = parse_program(ll);
         print(ast);
         sep();
         auto res = gen_asm(ast);

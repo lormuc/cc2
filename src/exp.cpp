@@ -397,6 +397,18 @@ namespace {
         }
     }
 
+    bool can_repr(const t_type& type, unsigned long w) {
+        if (type == int_type) {
+            return w < (1ul << 31);
+        } else if (type == u_int_type) {
+            return w < (1ul << 32);
+        } else if (type == long_type) {
+            return w < (1ul << 63);
+        } else {
+            return true;
+        }
+    }
+
     t_val gen_exp_(const t_ast& ast, t_ctx& ctx,
                    bool convert_lvalue) {
         auto assign_op = [&](auto& op) {
@@ -412,9 +424,48 @@ namespace {
         t_val y;
         t_val res;
         if (op == "integer_constant") {
-            res = t_val(stoi(ast.vv));
+            unsigned long w;
+            try {
+                w = stoul(ast.vv, 0, 0);
+            } catch (out_of_range) {
+                err("unrepresentable value", ast.loc);
+            } catch (invalid_argument) {
+                err("bad value", ast.loc);
+            }
+            auto u_suf = (ast.vv.find('u') != string::npos
+                          or ast.vv.find('U') != string::npos);
+            auto l_suf = (ast.vv.find('l') != string::npos
+                          or ast.vv.find('L') != string::npos);
+            vector<t_type> types;
+            if (not u_suf and not l_suf) {
+                if (ast.vv[0] == '0') {
+                    types = {int_type, u_int_type, long_type, u_long_type};
+                } else {
+                    types = {int_type, long_type, u_long_type};
+                }
+            } else if (u_suf and not l_suf) {
+                types = {u_int_type, u_long_type};
+            } else if (not u_suf and l_suf) {
+                types = {long_type, u_long_type};
+            } else if (u_suf and l_suf) {
+                types = {u_long_type};
+            }
+            for (auto& type : types) {
+                if (can_repr(type, w)) {
+                    res = t_val(w, type);
+                    break;
+                }
+            }
         } else if (op == "floating_constant") {
-            res = t_val(stod(ast.vv));
+            auto w = stod(ast.vv);
+            auto suffix = ast.vv.back();
+            if (suffix == 'f' or suffix == 'F') {
+                res = t_val(w, float_type);
+            } else if (suffix == 'l' or suffix == 'L') {
+                res = t_val(w, long_double_type);
+            } else {
+                res = t_val(w, double_type);
+            }
         } else if (op == "string_literal") {
             auto id = prog.def_str(ast.vv);
             auto t = make_array_type(char_type, ast.vv.length() + 1);
