@@ -47,7 +47,7 @@ string stringify(t_type_kind k) {
         "function",
         "enum"
     };
-    auto ik = int(k);
+    _ ik = int(k);
     assert(ik >= 0 and ik < table.size());
     return table[ik];
 }
@@ -136,7 +136,7 @@ t_type::t_type(t_type_kind k, const std::string& n,
         for (size_t idx = 0; idx < mm.size(); idx++) {
             size += mm[idx].type.get_size();
             alignment = max(alignment, mm[idx].type.get_alignment());
-            auto al = ((idx + 1 < mm.size())
+            _ al = ((idx + 1 < mm.size())
                        ? mm[idx + 1].type.get_alignment()
                        : alignment);
             if ((size % al) != 0) {
@@ -229,8 +229,8 @@ bool t_type::has_unknown_length() const {
 }
 
 int t_type::get_member_index(const std::string& id) const {
-    auto res = -1;
-    auto i = 0;
+    _ res = -1;
+    _ i = 0;
     while (i != int(members.size())) {
         if (members[i].id == id) {
             res = i;
@@ -351,7 +351,7 @@ bool is_integer_type(const t_type& t) {
 }
 
 bool is_floating_type(const t_type& t) {
-    auto i = static_cast<int>(t.get_kind());
+    _ i = static_cast<int>(t.get_kind());
     return i >= 9 and i < 12;
 }
 
@@ -360,7 +360,7 @@ bool is_arithmetic_type(const t_type& t) {
 }
 
 bool is_scalar_type(const t_type& t) {
-    auto k = t.get_kind();
+    _ k = t.get_kind();
     return is_arithmetic_type(k) or k == t_type_kind::_pointer;
 }
 
@@ -398,8 +398,8 @@ bool t_type::operator==(const t_type& x) const {
 }
 
 bool compatible(const t_type& x, const t_type& y) {
-    auto xk = x.get_kind();
-    auto yk = y.get_kind();
+    _ xk = x.get_kind();
+    _ yk = y.get_kind();
     if (xk == yk) {
         if (xk == t_type_kind::_pointer) {
             return (x.is_const() == y.is_const()
@@ -410,13 +410,13 @@ bool compatible(const t_type& x, const t_type& y) {
                     and (x.has_unknown_length() or y.has_unknown_length()
                          or x.get_length() == y.get_length()));
         } else if (xk == t_type_kind::_function) {
-            auto& xp = x.get_params();
-            auto& yp = y.get_params();
+            _& xp = x.get_params();
+            _& yp = y.get_params();
             if (not compatible(x.get_return_type(), y.get_return_type())
                 or xp.size() != yp.size()) {
                 return false;
             }
-            for (auto i = 0u; i < xp.size(); i++) {
+            for (_ i = 0u; i < xp.size(); i++) {
                 // need to unqualify and convert to pointers
                 if (not compatible(xp[i], yp[i])) {
                     return false;
@@ -444,10 +444,10 @@ string stringify(const t_type& type, string id) {
         res += " (";
         res += id;
         res += ")(";
-        auto& params = type.get_params();
+        _& params = type.get_params();
         if (not params.empty()) {
-            auto initial = true;
-            for (auto& p : params) {
+            _ initial = true;
+            for (_& p : params) {
                 if (not initial) {
                     res += ", ";
                 }
@@ -457,10 +457,10 @@ string stringify(const t_type& type, string id) {
         }
         res += ")";
     } else if (is_pointer_type(type)) {
-        auto new_id = string("*") + id;
+        _ new_id = string("*") + id;
         res += stringify(type.get_pointee_type(), new_id);
     } else if (is_array_type(type)) {
-        auto len = type.get_length();
+        _ len = type.get_length();
         string len_str;
         if (not type.has_unknown_length()) {
             len_str += to_string(len);
@@ -468,7 +468,7 @@ string stringify(const t_type& type, string id) {
         if (id != "") {
             id = string("(") + id + ")";
         }
-        auto new_id = id + "[" + len_str + "]";
+        _ new_id = id + "[" + len_str + "]";
         res += stringify(type.get_element_type(), new_id);
     } else {
         res += stringify(type.get_kind());

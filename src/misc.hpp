@@ -6,6 +6,8 @@
 #include <fstream>
 #include <string>
 
+#define _ auto
+
 struct t_loc {
     int line = -1;
     int column = -1;

@@ -11,7 +11,7 @@
 #include "type.hpp"
 #include "lex.hpp"
 
-const auto debug = true;
+const _ debug = true;
 
 using namespace std;
 
@@ -42,41 +42,41 @@ namespace {
     t_ast cond_exp();
     t_ast type_name();
 
-    auto init(const list<t_lexeme>& ll) {
+    _ init(const list<t_lexeme>& ll) {
         lexeme_list = ll;
         ll_it = lexeme_list.begin();
     }
 
-    auto& peek() {
+    _& peek() {
         assert(ll_it != lexeme_list.end());
         return *ll_it;
     }
 
-    auto get_state() {
+    _ get_state() {
         return ll_it;
     }
 
-    auto set_state(auto i) {
+    _ set_state(_ i) {
         ll_it = i;
     }
 
-    auto advance() {
+    _ advance() {
         ll_it++;
     }
 
-    auto add_child_opt(auto& res, auto f) {
+    _ add_child_opt(_& res, _ f) {
         try {
             res.add_child(f());
         } catch (t_parse_error) {
         }
     }
 
-    auto apply_rule(auto rule, const string& rule_name) {
+    _ apply_rule(_ rule, const string& rule_name) {
         if (debug) {
-            auto loc = peek().loc;
+            _ loc = peek().loc;
             cout << loc.line << ":" << loc.column << " " << rule_name << "\n";
         }
-        auto old_state = get_state();
+        _ old_state = get_state();
         try {
             return rule();
         } catch (const t_parse_error& e) {
@@ -112,8 +112,8 @@ namespace {
         return or_aux(t_parse_error("", peek().loc), args ...);
     }
 
-    auto opt(auto f) {
-        auto res = t_ast("opt", peek().loc);
+    _ opt(_ f) {
+        _ res = t_ast("opt", peek().loc);
         try {
             res.add_child(f());
         } catch (t_parse_error) {
@@ -121,27 +121,27 @@ namespace {
         return res;
     }
 
-    auto cmp(const string& name) {
+    _ cmp(const string& name) {
         return peek().uu == name;
     }
 
-    auto end() {
+    _ end() {
         return ll_it == lexeme_list.end() or cmp("eof");
     }
 
-    auto pop(const string& name) {
+    _ pop(const string& name) {
         if (not cmp(name)) {
             throw t_parse_error("expected " + name, peek().loc);
         }
-        auto res = peek().vv;
+        _ res = peek().vv;
         advance();
         return res;
     }
 
-    auto prim_exp_() {
-        auto kind = peek().uu;
-        auto value = peek().vv;
-        auto loc = peek().loc;
+    _ prim_exp_() {
+        _ kind = peek().uu;
+        _ value = peek().vv;
+        _ loc = peek().loc;
         t_ast res;
         if (kind == "identifier") {
             res = t_ast(kind, value, loc);
@@ -166,10 +166,10 @@ namespace {
     }
     def_rule(prim_exp);
 
-    auto postfix_exp_() {
-        auto res = prim_exp();
+    _ postfix_exp_() {
+        _ res = prim_exp();
         while (true) {
-            auto loc = peek().loc;
+            _ loc = peek().loc;
             if (cmp("(")) {
                 advance();
                 res = t_ast("function_call", {res});
@@ -207,16 +207,16 @@ namespace {
     }
     def_rule(postfix_exp);
 
-    auto sizeof_exp_() {
-        auto res = t_ast("sizeof_exp", peek().loc);
+    _ sizeof_exp_() {
+        _ res = t_ast("sizeof_exp", peek().loc);
         pop("sizeof");
         res.add_child(un_exp());
         return res;
     }
     def_rule(sizeof_exp);
 
-    auto sizeof_type_() {
-        auto res = t_ast("sizeof_type", peek().loc);
+    _ sizeof_type_() {
+        _ res = t_ast("sizeof_type", peek().loc);
         pop("sizeof");
         pop("(");
         res.add_child(type_name());
@@ -225,7 +225,7 @@ namespace {
     }
     def_rule(sizeof_type);
 
-    auto un_exp_() {
+    _ un_exp_() {
         t_ast res;
         vector<string> un_ops = {"&", "*", "+", "-", "~", "!"};
         if (cmp("++")) {
@@ -249,8 +249,8 @@ namespace {
     }
     def_rule(un_exp);
 
-    auto parameter_declaration_() {
-        auto res = t_ast("parameter_declaration", peek().loc);
+    _ parameter_declaration_() {
+        _ res = t_ast("parameter_declaration", peek().loc);
         res.add_child(declaration_specifiers());
         try {
             res.add_child(declarator());
@@ -264,8 +264,8 @@ namespace {
     }
     def_rule(parameter_declaration);
 
-    auto parameter_type_list_() {
-        auto res = t_ast("parameter_type_list", peek().loc);
+    _ parameter_type_list_() {
+        _ res = t_ast("parameter_type_list", peek().loc);
         res.add_child(parameter_declaration());
         while (true) {
             if (cmp(",")) {
@@ -289,8 +289,8 @@ namespace {
     }
     def_rule(parameter_type_list);
 
-    auto function_params_opt_() {
-        auto res = t_ast("function_params_opt", peek().loc);
+    _ function_params_opt_() {
+        _ res = t_ast("function_params_opt", peek().loc);
         pop("(");
         add_child_opt(res, parameter_type_list);
         pop(")");
@@ -298,13 +298,14 @@ namespace {
     }
     def_rule(function_params_opt);
 
-    auto direct_abstract_declarator_() {
-        auto res = t_ast("direct_abstract_declarator", peek().loc);
+    _ direct_abstract_declarator_() {
+        _ res = t_ast("direct_abstract_declarator", peek().loc);
         try {
             pop("(");
             res.add_child(abstract_declarator());
             pop(")");
         } catch (t_parse_error) {
+            res.add_child(t_ast("identifier", "", peek().loc));
         }
         while (true) {
             try {
@@ -324,8 +325,8 @@ namespace {
     }
     def_rule(direct_abstract_declarator);
 
-    auto abstract_declarator_() {
-        auto res = t_ast("abstract_declarator", peek().loc);
+    _ abstract_declarator_() {
+        _ res = t_ast("abstract_declarator", peek().loc);
         res.add_child(opt(pointer));
         res.add_child(opt(direct_abstract_declarator));
         if (peek().loc == res.loc) {
@@ -335,8 +336,8 @@ namespace {
     }
     def_rule(abstract_declarator);
 
-    auto type_name_() {
-        auto res = t_ast("type_name", peek().loc);
+    _ type_name_() {
+        _ res = t_ast("type_name", peek().loc);
         res.add_child(specifier_qualifier_list());
         try {
             res.add_child(abstract_declarator());
@@ -346,8 +347,8 @@ namespace {
     }
     def_rule(type_name);
 
-    auto cast_() {
-        auto res = t_ast("cast", peek().loc);
+    _ cast_() {
+        _ res = t_ast("cast", peek().loc);
         pop("(");
         res.add_child(type_name());
         pop(")");
@@ -356,84 +357,84 @@ namespace {
     }
     def_rule(cast);
 
-    auto cast_exp_() { return or_(un_exp, cast); }
+    _ cast_exp_() { return or_(un_exp, cast); }
     def_rule(cast_exp);
 
-    auto left_assoc_bin_op(const vector<string>& ops,
+    _ left_assoc_bin_op(const vector<string>& ops,
                            function<t_ast()> subexp) {
-        auto res = subexp();
+        _ res = subexp();
         while (true) {
-            auto op = peek().uu;
+            _ op = peek().uu;
             if (not has(ops, op)) {
                 break;
             }
-            auto loc = peek().loc;
+            _ loc = peek().loc;
             advance();
-            auto t = subexp();
+            _ t = subexp();
             res = t_ast(op, {res, t});
             res.loc = loc;
         }
         return res;
     }
 
-    auto mul_exp_() {
+    _ mul_exp_() {
         return left_assoc_bin_op({"*", "/", "%"}, cast_exp);
     }
     def_rule(mul_exp);
 
-    auto add_exp_() {
+    _ add_exp_() {
         return left_assoc_bin_op({"+", "-"}, mul_exp);
     }
     def_rule(add_exp);
 
-    auto shift_exp_() {
+    _ shift_exp_() {
         return left_assoc_bin_op({"<<", ">>"}, add_exp);
     }
     def_rule(shift_exp);
 
-    auto rel_exp_() {
+    _ rel_exp_() {
         return left_assoc_bin_op({"<", "<=", ">", ">="}, shift_exp);
     }
     def_rule(rel_exp);;
 
-    auto eql_exp_() {
+    _ eql_exp_() {
         return left_assoc_bin_op({"==", "!="}, rel_exp);
     }
     def_rule(eql_exp);
 
-    auto bit_and_exp_() {
+    _ bit_and_exp_() {
         return left_assoc_bin_op({"&"}, eql_exp);
     }
     def_rule(bit_and_exp);
 
-    auto bit_xor_exp_() {
+    _ bit_xor_exp_() {
         return left_assoc_bin_op({"^"}, bit_and_exp);
     }
     def_rule(bit_xor_exp);
 
-    auto bit_or_exp_() {
+    _ bit_or_exp_() {
         return left_assoc_bin_op({"|"}, bit_xor_exp);
     }
     def_rule(bit_or_exp);
 
-    auto and_exp_() {
+    _ and_exp_() {
         return left_assoc_bin_op({"&&"}, bit_or_exp);
     }
     def_rule(and_exp);
 
-    auto or_exp_() {
+    _ or_exp_() {
         return left_assoc_bin_op({"||"}, and_exp);
     }
     def_rule(or_exp);
 
-    auto cond_exp_() {
-        auto res = or_exp();
+    _ cond_exp_() {
+        _ res = or_exp();
         if (peek().uu == "?") {
-            auto loc = peek().loc;
+            _ loc = peek().loc;
             advance();
-            auto y = exp();
+            _ y = exp();
             pop(":");
-            auto z = cond_exp();
+            _ z = cond_exp();
             res = t_ast("?:", {res, y, z});
             res.loc = loc;
         }
@@ -441,18 +442,18 @@ namespace {
     }
     def_rule(cond_exp);
 
-    auto assign_() {
-        auto x = un_exp();
+    _ assign_() {
+        _ x = un_exp();
         vector<string> ops = {
             "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=",
             "^=", "|="
         };
-        auto op = peek().uu;
+        _ op = peek().uu;
         if (not has(ops, op)) {
             throw t_parse_error("expected assignment operator",
                                 peek().loc);
         }
-        auto res = t_ast(op, peek().loc);
+        _ res = t_ast(op, peek().loc);
         advance();
         res.add_child(x);
         res.add_child(assign_exp());
@@ -460,10 +461,10 @@ namespace {
     }
     def_rule(assign);
 
-    auto assign_exp_() { return or_(assign, cond_exp); }
+    _ assign_exp_() { return or_(assign, cond_exp); }
     def_rule(assign_exp);
 
-    auto exp_() {
+    _ exp_() {
         return left_assoc_bin_op({","}, assign_exp);
     }
     def_rule(exp);
@@ -472,24 +473,24 @@ namespace {
         return cond_exp();
     }
 
-    auto exp_statement_() {
-        auto res = t_ast("exp_statement", peek().loc);
+    _ exp_statement_() {
+        _ res = t_ast("exp_statement", peek().loc);
         add_child_opt(res, exp);
         pop(";");
         return res;
     }
     def_rule(exp_statement);
 
-    auto pointer_() {
-        auto res = t_ast("pointer", peek().loc);
+    _ pointer_() {
+        _ res = t_ast("pointer", peek().loc);
         pop("*");
         add_child_opt(res, pointer);
         return res;
     }
     def_rule(pointer);
 
-    auto struct_declarator_list_() {
-        auto res = t_ast("struct_declarator_list", peek().loc);
+    _ struct_declarator_list_() {
+        _ res = t_ast("struct_declarator_list", peek().loc);
         while (true) {
             res.add_child(declarator());
             if (not cmp(",")) {
@@ -501,8 +502,8 @@ namespace {
     }
     def_rule(struct_declarator_list);
 
-    auto struct_or_union_specifier_() {
-        auto res = t_ast("struct_or_union_specifier", peek().loc);
+    _ struct_or_union_specifier_() {
+        _ res = t_ast("struct_or_union_specifier", peek().loc);
         pop("struct");
         if (cmp("identifier")) {
             res.vv = peek().vv;
@@ -521,8 +522,8 @@ namespace {
     }
     def_rule(struct_or_union_specifier);
 
-    auto enumerator_() {
-        auto res = t_ast("enumerator", peek().loc);
+    _ enumerator_() {
+        _ res = t_ast("enumerator", peek().loc);
         res.vv = pop("identifier");
         if (cmp("=")) {
             advance();
@@ -532,8 +533,8 @@ namespace {
     }
     def_rule(enumerator);
 
-    auto enum_specifier_() {
-        auto res = t_ast("enum", peek().loc);
+    _ enum_specifier_() {
+        _ res = t_ast("enum", peek().loc);
         pop("enum");
         if (cmp("identifier")) {
             res.vv = peek().vv;
@@ -557,9 +558,9 @@ namespace {
     }
     def_rule(enum_specifier);
 
-    auto type_specifier_() {
+    _ type_specifier_() {
         if (has(type_specifiers, peek().uu)) {
-            auto res = t_ast("type_specifier", peek().uu, peek().loc);
+            _ res = t_ast("type_specifier", peek().uu, peek().loc);
             advance();
             return res;
         } else if (cmp("struct") or cmp("union")) {
@@ -570,8 +571,8 @@ namespace {
     }
     def_rule(type_specifier);
 
-    auto specifier_qualifier_list_() {
-        auto res = t_ast("specifier_qualifier_list", peek().loc);
+    _ specifier_qualifier_list_() {
+        _ res = t_ast("specifier_qualifier_list", peek().loc);
         res.add_child(type_specifier());
         while (true) {
             try {
@@ -584,8 +585,8 @@ namespace {
     }
     def_rule(specifier_qualifier_list);
 
-    auto struct_declaration_() {
-        auto res = t_ast("struct_declaration", peek().loc);
+    _ struct_declaration_() {
+        _ res = t_ast("struct_declaration", peek().loc);
         res.add_child(specifier_qualifier_list());
         res.add_child(struct_declarator_list());
         pop(";");
@@ -593,8 +594,8 @@ namespace {
     }
     def_rule(struct_declaration);
 
-    auto struct_declaration_list_() {
-        auto res = t_ast("struct_declaration_list", peek().loc);
+    _ struct_declaration_list_() {
+        _ res = t_ast("struct_declaration_list", peek().loc);
         while (true) {
             try {
                 res.add_child(struct_declaration());
@@ -606,15 +607,15 @@ namespace {
     }
     def_rule(struct_declaration_list);
 
-    auto identifier_() {
-        auto res = t_ast("identifier", peek().loc);
+    _ identifier_() {
+        _ res = t_ast("identifier", peek().loc);
         res.vv = pop("identifier");
         return res;
     }
     def_rule(identifier);
 
-    auto array_size_() {
-        auto res = t_ast("array_size", peek().loc);
+    _ array_size_() {
+        _ res = t_ast("array_size", peek().loc);
         pop("[");
         add_child_opt(res, const_exp);
         pop("]");
@@ -622,8 +623,8 @@ namespace {
     }
     def_rule(array_size);
 
-    auto func_ids_() {
-        auto res = t_ast("func_ids", peek().loc);
+    _ func_ids_() {
+        _ res = t_ast("func_ids", peek().loc);
         pop("(");
         if (not cmp(")")) {
             while (true) {
@@ -639,16 +640,16 @@ namespace {
     }
     def_rule(func_ids);
 
-    auto subdeclarator_() {
+    _ subdeclarator_() {
         pop("(");
-        auto e = declarator();
+        _ e = declarator();
         pop(")");
         return e;
     }
     def_rule(subdeclarator);
 
-    auto direct_declarator_() {
-        auto res = t_ast("direct_declarator", peek().loc);
+    _ direct_declarator_() {
+        _ res = t_ast("direct_declarator", peek().loc);
         res.add_child(or_(subdeclarator,
                           identifier));
         while (true) {
@@ -665,15 +666,15 @@ namespace {
     def_rule(direct_declarator);
 
     t_ast declarator_() {
-        auto res = t_ast("declarator", peek().loc);
+        _ res = t_ast("declarator", peek().loc);
         res.add_child(opt(pointer));
         res.add_child(direct_declarator());
         return res;
     }
     def_rule(declarator);
 
-    auto initializer_() {
-        auto res = t_ast("initializer", peek().loc);
+    _ initializer_() {
+        _ res = t_ast("initializer", peek().loc);
         try {
             res.add_child(assign_exp());
         } catch (t_parse_error) {
@@ -694,8 +695,8 @@ namespace {
     }
     def_rule(initializer);
 
-    auto init_declarator_() {
-        auto res = t_ast("init_declarator", peek().loc);
+    _ init_declarator_() {
+        _ res = t_ast("init_declarator", peek().loc);
         res.add_child(declarator());
         if (cmp("=")) {
             advance();
@@ -705,13 +706,13 @@ namespace {
     }
     def_rule(init_declarator);
 
-    auto declaration_specifiers_() {
+    _ declaration_specifiers_() {
         return specifier_qualifier_list();
     }
     def_rule(declaration_specifiers);
 
-    auto declaration_() {
-        auto res = t_ast("declaration", peek().loc);
+    _ declaration_() {
+        _ res = t_ast("declaration", peek().loc);
         res.add_child(declaration_specifiers());
         if (not cmp(";")) {
             while (true) {
@@ -727,8 +728,8 @@ namespace {
     }
     def_rule(declaration);
 
-    auto compound_statement_() {
-        auto res = t_ast("compound_statement", peek().loc);
+    _ compound_statement_() {
+        _ res = t_ast("compound_statement", peek().loc);
         pop("{");
         while (not cmp("}")) {
             res.add_child(block_item());
@@ -738,8 +739,8 @@ namespace {
     }
     def_rule(compound_statement);
 
-    auto if_statement_() {
-        auto res = t_ast("if", peek().loc);
+    _ if_statement_() {
+        _ res = t_ast("if", peek().loc);
         pop("if");
         pop("(");
         res.add_child(exp());
@@ -753,17 +754,17 @@ namespace {
     }
     def_rule(if_statement);
 
-    auto label_() {
-        auto id = pop("identifier");
-        auto res = t_ast("label", id, peek().loc);
+    _ label_() {
+        _ id = pop("identifier");
+        _ res = t_ast("label", id, peek().loc);
         pop(":");
         res.add_child(statement());
         return res;
     }
     def_rule(label);
 
-    auto while_statement_() {
-        auto res = t_ast("while", peek().loc);
+    _ while_statement_() {
+        _ res = t_ast("while", peek().loc);
         pop("while");
         pop("(");
         res.add_child(exp());
@@ -773,8 +774,8 @@ namespace {
     }
     def_rule(while_statement);
 
-    auto do_while_statement_() {
-        auto res = t_ast("do_while", peek().loc);
+    _ do_while_statement_() {
+        _ res = t_ast("do_while", peek().loc);
         pop("do");
         res.add_child(statement());
         pop("while");
@@ -786,8 +787,8 @@ namespace {
     }
     def_rule(do_while_statement);
 
-    auto for_statement_() {
-        auto res = t_ast("for", peek().loc);
+    _ for_statement_() {
+        _ res = t_ast("for", peek().loc);
         pop("for");
         pop("(");
         res.add_child(opt(exp));
@@ -801,8 +802,8 @@ namespace {
     }
     def_rule(for_statement);
 
-    auto goto_statement_() {
-        auto res = t_ast("goto", peek().loc);
+    _ goto_statement_() {
+        _ res = t_ast("goto", peek().loc);
         pop("goto");
         res.add_child(identifier());
         pop(";");
@@ -810,24 +811,24 @@ namespace {
     }
     def_rule(goto_statement);
 
-    auto continue_statement_() {
-        auto res = t_ast("continue", peek().loc);
+    _ continue_statement_() {
+        _ res = t_ast("continue", peek().loc);
         pop("continue");
         pop(";");
         return res;
     }
     def_rule(continue_statement);
 
-    auto break_statement_() {
-        auto res = t_ast("break", peek().loc);
+    _ break_statement_() {
+        _ res = t_ast("break", peek().loc);
         pop("break");
         pop(";");
         return res;
     }
     def_rule(break_statement);
 
-    auto return_statement_() {
-        auto res = t_ast("return", peek().loc);
+    _ return_statement_() {
+        _ res = t_ast("return", peek().loc);
         pop("return");
         res.add_child(exp());
         pop(";");
@@ -835,12 +836,41 @@ namespace {
     }
     def_rule(return_statement);
 
-    auto labeled_statement() {
-        return t_ast();
+    _ case_statement_() {
+        _ res = t_ast("case", peek().loc);
+        pop("case");
+        res.add_child(const_exp());
+        pop(":");
+        res.add_child(statement());
+        return res;
     }
+    def_rule(case_statement);
 
-    auto statement_() {
-        return or_(label,
+    _ default_statement_() {
+        _ res = t_ast("default", peek().loc);
+        pop("default");
+        pop(":");
+        res.add_child(statement());
+        return res;
+    }
+    def_rule(default_statement);
+
+    _ switch_statement_() {
+        _ res = t_ast("switch", peek().loc);
+        pop("switch");
+        pop("(");
+        res.add_child(exp());
+        pop(")");
+        res.add_child(statement());
+        return res;
+    }
+    def_rule(switch_statement);
+
+    _ statement_() {
+        return or_(switch_statement,
+                   case_statement,
+                   default_statement,
+                   label,
                    compound_statement,
                    if_statement,
                    while_statement,
@@ -854,17 +884,17 @@ namespace {
     }
     def_rule(statement);
 
-    auto block_item_() { return or_(statement, declaration); }
+    _ block_item_() { return or_(statement, declaration); }
     def_rule(block_item);
 
-    auto function_definition_() {
-        auto loc = peek().loc;
+    _ function_definition_() {
+        _ loc = peek().loc;
         pop("int");
-        auto func_name = pop("identifier");
+        _ func_name = pop("identifier");
         pop("(");
         pop(")");
-        auto children = compound_statement().children;
-        auto res = t_ast("function", func_name, children);
+        _ children = compound_statement().children;
+        _ res = t_ast("function", func_name, children);
         res.loc = loc;
         return res;
     }
@@ -873,7 +903,7 @@ namespace {
 
 t_ast parse_program(const list<t_lexeme>& n_ll) {
     init(n_ll);
-    auto res = t_ast("program", peek().loc);
+    _ res = t_ast("program", peek().loc);
     while (not end()) {
         res.add_child(function_definition());
     }

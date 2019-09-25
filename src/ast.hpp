@@ -56,13 +56,13 @@ struct t_ast {
 
     t_ast(const std::string& u, t_loc _loc) {
         uu = u;
-        _loc = loc;
+        loc = _loc;
     }
 
     t_ast(const std::string& u, const std::string& v, t_loc _loc) {
         uu = u;
         vv = v;
-        _loc = loc;
+        loc = _loc;
     }
 
     bool operator==(const t_ast& a) const {

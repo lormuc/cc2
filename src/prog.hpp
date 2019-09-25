@@ -12,6 +12,11 @@ struct t_asm_val {
     }
 };
 
+struct t_asm_case {
+    t_asm_val val;
+    std::string label;
+};
+
 class t_prog {
     bool _silence = false;
     int str_cnt = 0;
@@ -58,4 +63,6 @@ public:
     void ret(const t_asm_val&);
     void silence(bool);
     bool silence();
+    void switch_(const t_asm_val&, const std::string&,
+                 const std::vector<t_asm_case>&);
 };

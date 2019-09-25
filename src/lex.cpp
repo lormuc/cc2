@@ -43,21 +43,21 @@ class t_lexer {
         throw t_compile_error("lexing error: " + str, lexeme_loc);
     }
 
-    auto set_state(const auto& x) {
+    _ set_state(const _& x) {
         idx = get<0>(x);
         cur_loc = get<1>(x);
     }
 
-    auto get_state() {
+    _ get_state() {
         return make_tuple(idx, cur_loc);
     }
 
     void check_if_in_include() {
-        auto n = result.size();
+        _ n = result.size();
         if (n < 2) {
             return;
         }
-        auto& l1 = *next(result.end(), -1);
+        _& l1 = *next(result.end(), -1);
         in_include = ((*next(result.end(), -2)).uu == "#"
                       and (l1.uu == "identifier" and l1.vv == "include")
                       and (n == 2
@@ -93,7 +93,7 @@ class t_lexer {
         return str.compare(idx, x.length(), x);
     }
     bool cmp_or(const std::string& x) {
-        auto res = x.find(peek()) != string::npos;
+        _ res = x.find(peek()) != string::npos;
         return res;
     }
     bool match(const std::string& x) {
@@ -105,7 +105,7 @@ class t_lexer {
         }
     }
     bool operator_() {
-        for (auto& op : operators) {
+        for (_& op : operators) {
             if (match(op)) {
                 push(op);
                 return true;
@@ -219,7 +219,7 @@ class t_lexer {
         if (not in_include) {
             return false;
         }
-        auto old_state = get_state();
+        _ old_state = get_state();
         if (peek() == '<') {
             string val;
             val += advance();

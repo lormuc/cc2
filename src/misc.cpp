@@ -11,7 +11,7 @@ string read_file_into_string(ifstream& t) {
     return buffer;
 }
 
-auto hex_digit(int x) {
+_ hex_digit(int x) {
     if (x < 10) {
         return string(1, '0' + x);
     } else {
@@ -21,7 +21,7 @@ auto hex_digit(int x) {
 
 string print_bytes(const string& str) {
     string res;
-    for (auto& ch : str) {
+    for (_& ch : str) {
         if (isprint(ch)) {
             res += ch;
         } else {

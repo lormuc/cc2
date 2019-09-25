@@ -13,7 +13,7 @@
 #include <set>
 
 #include "ast.hpp"
-#include "asm_gen.hpp"
+#include "gen.hpp"
 #include "lex.hpp"
 #include "misc.hpp"
 #include "type.hpp"
@@ -29,8 +29,8 @@ void sep() {
 }
 
 void print(const t_ast& t, unsigned level = 0) {
-    auto print_spaces = [&](unsigned n) {
-        for (auto i = 0u; i < n; i++) {
+    _ print_spaces = [&](unsigned n) {
+        for (_ i = 0u; i < n; i++) {
             log << " ";
         }
     };
@@ -40,14 +40,14 @@ void print(const t_ast& t, unsigned level = 0) {
         log << " : " << print_bytes(t.vv);
     }
     log << "\n";
-    for (auto& c : t.children) {
+    for (_& c : t.children) {
         print(c, level + 1);
     }
     log.flush();
 }
 
 void print(const list<t_lexeme>& ll) {
-    for (auto& l : ll) {
+    for (_& l : ll) {
         log << l.uu;
         if (not l.vv.empty()) {
             log << " ||| " << print_bytes(l.vv);
@@ -57,9 +57,9 @@ void print(const list<t_lexeme>& ll) {
     log.flush();
 }
 
-auto get_line_pos(const string& src, int line) {
-    auto i = 0;
-    auto line_count = 0;
+_ get_line_pos(const string& src, int line) {
+    _ i = 0;
+    _ line_count = 0;
     if (line_count != line) {
         while (i < src.size()) {
             if (i != 0 and src[i-1] == '\n') {
@@ -74,10 +74,10 @@ auto get_line_pos(const string& src, int line) {
     return i;
 }
 
-auto preprocess(list<t_lexeme>& ll) {
-    auto it = ll.begin();
+_ preprocess(list<t_lexeme>& ll) {
+    _ it = ll.begin();
     while (it != ll.end()) {
-        auto in_pp = ((*it).uu == "#");
+        _ in_pp = ((*it).uu == "#");
         while (it != ll.end() and (*it).uu != "newline") {
             if (in_pp) {
                 it = ll.erase(it);
@@ -91,8 +91,8 @@ auto preprocess(list<t_lexeme>& ll) {
     }
 }
 
-auto escape_seqs(list<t_lexeme>& ll) {
-    for (auto& l : ll) {
+_ escape_seqs(list<t_lexeme>& ll) {
+    for (_& l : ll) {
         if (l.uu == "char_constant" or l.uu == "string_literal") {
             string new_str;
             size_t i = 0;
@@ -114,14 +114,14 @@ auto escape_seqs(list<t_lexeme>& ll) {
 const set<string> keywords = {
     "int", "return", "if", "else", "while", "for", "do",
     "continue", "break", "struct", "float",
-    "char", "unsigned", "void", "auto", "case", "const",
+    "char", "unsigned", "void", "_", "case", "const",
     "default", "double", "enum", "extern", "goto", "long",
     "register", "short", "signed", "sizeof", "static", "struct",
     "switch", "typedef", "union", "volatile"
 };
 
-auto convert_lexemes(list<t_lexeme>& ll) {
-    auto it = ll.begin();
+_ convert_lexemes(list<t_lexeme>& ll) {
+    _ it = ll.begin();
     while (it != ll.end()) {
         if ((*it).uu == "newline") {
             it = ll.erase(it);
@@ -163,10 +163,10 @@ int main(int argc, char** argv) {
     }
 
     log.open("log.txt");
-    auto src = read_file_into_string(is);
+    _ src = read_file_into_string(is);
 
     try {
-        auto ll = lex(src);
+        _ ll = lex(src);
         print(ll);
         sep();
         preprocess(ll);
@@ -175,10 +175,10 @@ int main(int argc, char** argv) {
         convert_lexemes(ll);
         print(ll);
         sep();
-        auto ast = parse_program(ll);
+        _ ast = parse_program(ll);
         print(ast);
         sep();
-        auto res = gen_asm(ast);
+        _ res = gen_asm(ast);
         log << res;
         ofstream os(argv[2]);
         if (!os.good()) {
@@ -187,15 +187,15 @@ int main(int argc, char** argv) {
         }
         os << res;
     } catch (const t_compile_error& e) {
-        auto is_loc_valid = (e.get_loc() != t_loc());
+        _ is_loc_valid = (e.get_loc() != t_loc());
         if (is_loc_valid) {
             cerr << (e.line() + 1) << ":" << (e.column() + 1) << ": ";
         }
         cerr << "error: ";
         cerr << e.what() << "\n";
         if (is_loc_valid) {
-            auto i = get_line_pos(src, e.line());
-            for (auto j = i; j < src.size() and src[j] != '\n'; j++) {
+            _ i = get_line_pos(src, e.line());
+            for (_ j = i; j < src.size() and src[j] != '\n'; j++) {
                 cerr << src[j];
             }
             cerr << "\n";

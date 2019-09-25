@@ -31,7 +31,7 @@ void t_prog::a(const std::string& line) {
 }
 
 string t_prog::aa(const std::string& line) {
-    auto res = make_new_id();
+    _ res = make_new_id();
     a(res + " = " + line);
     return res;
 }
@@ -57,8 +57,8 @@ void t_prog::put_label(const string& l, bool f) {
 }
 
 string t_prog::def_str(const string& str) {
-    auto len = str.length() + 1;
-    auto name = "@str_" + to_string(str_cnt);
+    _ len = str.length() + 1;
+    _ name = "@str_" + to_string(str_cnt);
     str_cnt++;
     append(global_storage, name);
     append(global_storage, " = private unnamed_addr constant [");
@@ -99,7 +99,7 @@ void t_prog::noop() {
 }
 
 string t_prog::def_var(const string& type) {
-    auto res = make_new_id();
+    _ res = make_new_id();
     append(func_var_alloc, func_line(res + " = alloca " + type));
     return res;
 }
@@ -124,13 +124,13 @@ string t_prog::apply(const string& op, const t_asm_val& x,
 
 string t_prog::apply_rel(const string& op, const t_asm_val& x,
                          const t_asm_val& y) {
-    auto tmp = aa(op + " " + x.join() + ", " + y.name);
+    _ tmp = aa(op + " " + x.join() + ", " + y.name);
     return convert("zext", {"i1", tmp}, "i32");
 }
 
 string t_prog::apply_rel(const string& op, const t_asm_val& x,
                          const string& y) {
-    auto tmp = aa(op + " " + x.join() + ", " + y);
+    _ tmp = aa(op + " " + x.join() + ", " + y);
     return convert("zext", {"i1", tmp}, "i32");
 }
 
@@ -146,7 +146,7 @@ string t_prog::inc_ptr(const t_asm_val& x, const t_asm_val& y) {
 
 string t_prog::call_printf(const vector<t_asm_val>& args) {
     string args_str;
-    for (auto& arg : args) {
+    for (_& arg : args) {
         if (args_str.empty()) {
             args_str += arg.join();
         } else {
@@ -176,4 +176,17 @@ void t_prog::silence(bool x) {
 
 bool t_prog::silence() {
     return _silence;
+}
+
+void t_prog::switch_(const t_asm_val& x, const string& default_label,
+                     const vector<t_asm_case>& cases) {
+    string str;
+    for (_& c : cases) {
+        if (str != "") {
+            str += " ";
+        }
+        str += c.val.join() + ", label " + c.label;
+    }
+    a("switch " + x.join() + ", label " + default_label
+      + " [" + str + "]");
 }
