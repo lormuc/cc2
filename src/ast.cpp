@@ -146,10 +146,8 @@ namespace {
         if (kind == "identifier") {
             res = t_ast(kind, value, loc);
             advance();
-        } else if (kind == "integer_constant") {
-            res = t_ast(kind, value, loc);
-            advance();
-        } else if (kind == "floating_constant") {
+        } else if (kind == "integer_constant" or kind == "floating_constant"
+                   or kind == "char_constant") {
             res = t_ast(kind, value, loc);
             advance();
         } else if (kind == "(") {

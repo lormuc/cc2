@@ -415,6 +415,8 @@ namespace {
             _ id = prog.def_str(ast.vv);
             _ t = make_array_type(char_type, ast.vv.length() + 1);
             res = t_val(id, t, true);
+        } else if (op == "char_constant") {
+            res = t_val(int(ast.vv[0]));
         } else if (op == "identifier") {
             res = ctx.get_var_data(ast.vv);
         } else if (op == "+" and arg_cnt == 1) {

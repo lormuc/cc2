@@ -172,6 +172,7 @@ int main(int argc, char** argv) {
         preprocess(ll);
         print(ll);
         escape_seqs(ll);
+        sep();
         convert_lexemes(ll);
         print(ll);
         sep();
