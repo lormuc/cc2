@@ -1,0 +1,4 @@
+tests/other/
+build/
+tmp/
+log.txt
