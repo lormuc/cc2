@@ -1,6 +1,11 @@
 #include <stdio.h>
 
 int main() {
+    struct abc {
+        int x;
+        int y;
+        int z;
+    };
     struct ttt {
         char x;
         long y;
@@ -8,11 +13,11 @@ int main() {
     };
     int a[4] = {1, 3, 4, 5};
     int x = 9;
+    printf("%d\n", sizeof(abc) == 3 * sizeof(int));
     printf("%d\n", sizeof(sizeof(x = x + 5)));
     printf("%d\n", sizeof(sizeof(sizeof(x = x + 5))));
     printf("%d\n", x);
-    printf("%d\n", (sizeof(struct ttt)
-                    >= sizeof(char) + sizeof(long) + 5*sizeof(int)));
+    printf("%d\n", sizeof(struct ttt));
     printf("%d\n", sizeof a == sizeof *a * 4);
     printf("%d\n", sizeof(a) / sizeof(*a));
     printf("%d\n", sizeof(char) == 1);

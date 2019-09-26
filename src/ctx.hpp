@@ -15,16 +15,24 @@ class t_namespace {
     std::unordered_map<std::string, t> outer_scope;
     std::unordered_map<std::string, t> scope;
 public:
-    const t& get(const std::string& name) const {
+    const t& scope_get(const std::string& name) const {
         auto it = scope.find(name);
         if (it != scope.end()) {
             return (*it).second;
-        }
-        auto oit = outer_scope.find(name);
-        if (oit != outer_scope.end()) {
-            return (*oit).second;
         } else {
             throw t_undefined_name_error();
+        }
+    }
+    const t& get(const std::string& name) const {
+        try {
+            return scope_get(name);
+        } catch (t_undefined_name_error) {
+            auto oit = outer_scope.find(name);
+            if (oit != outer_scope.end()) {
+                return (*oit).second;
+            } else {
+                throw;
+            }
         }
     }
     void def(const std::string& name, const t& data) {
@@ -32,6 +40,9 @@ public:
         if (it != scope.end()) {
             throw t_redefinition_error();
         }
+        scope[name] = data;
+    }
+    void put(const std::string& name, const t& data) {
         scope[name] = data;
     }
     void enter_scope() {
@@ -86,8 +97,14 @@ public:
     const t_type_data& get_type_data(const std::string& name) const {
         return types.get(name);
     }
+    const t_type_data& scope_get_type_data(const std::string& name) const {
+        return types.scope_get(name);
+    }
     void def_type(const std::string& name, const t_type_data& data) {
         types.def(name, data);
+    }
+    void put_struct(const std::string& name, const t_type_data& data) {
+        types.put(name, data);
     }
 
     auto loop_body_end(const std::string& x) {

@@ -93,10 +93,10 @@ t_type t_ctx::complete_type(const t_type& t) const {
     if (not is_struct_type(t)) {
         return t;
     }
-    if (not t.is_complete()) {
+    _ mm = t.get_members();
+    if (mm.empty()) {
         return get_type_data(t.get_name()).type;
     }
-    _ mm = t.get_members();
     for (_& m : mm) {
         m.type = complete_type(m.type);
     }

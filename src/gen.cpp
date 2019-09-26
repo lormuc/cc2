@@ -59,8 +59,12 @@ namespace {
     void gen_declaration(const t_ast& ast, t_ctx& ctx) {
         _ base = make_base_type(ast[0], ctx);
         for (size_t i = 1; i < ast.children.size(); i++) {
-            _ type = ctx.complete_type(base);
+            _ type = base;
             _ name = unpack_declarator(type, ast[i][0], ctx);
+            type = ctx.complete_type(type);
+            if (not type.get_is_size_known()) {
+                err("type has an unknown size", ast[i].loc);
+            }
             _ asm_id = prog.def_var(ctx.asmt(type));
             _ val = t_val(asm_id, type, true);
             ctx.def_var(name, val);
@@ -349,8 +353,15 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
     };
     if (ast.children.size() == 1
         and ast[0].uu == "struct_or_union_specifier") {
+        _ struct_name = ast[0].vv;
         if (ast[0].children.empty()) {
-            return make_struct_type(ast[0].vv);
+            try {
+                return ctx.scope_get_type_data(struct_name).type;
+            } catch (t_undefined_name_error) {
+                _ type = make_struct_type(struct_name);
+                ctx.put_struct(struct_name, {type, prog.make_new_id()});
+                return type;
+            }
         }
         vector<t_struct_member> members;
         for (_& c : ast[0][0].children) {
@@ -358,25 +369,29 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
             for (size_t i = 1; i < c.children.size(); i++) {
                 _ type = base;
                 _ name = unpack_declarator(type, c[i][0], ctx);
-                if (type.get_is_size_known() == false) {
-                    _& _type = ctx.get_type_data(type.get_name()).type;
-                    type.set_size(_type.get_size(), _type.get_alignment());
+                if (not type.get_is_size_known()) {
+                    type = ctx.complete_type(type);
                 }
                 members.push_back({name, type});
             }
         }
-        string name;
-        if (ast[0].vv.empty()) {
-            name = make_anon_type_id();
-        } else {
-            name = ast[0].vv;
+        if (struct_name.empty()) {
+            struct_name = make_anon_type_id();
         }
-        _ type = make_struct_type(name, members);
-        _ id = prog.make_new_id();
-        if (not members.empty()) {
-            prog.def_struct(id, ctx.asmt(type, true));
+        _ type = make_struct_type(struct_name, members);
+        string id;
+        try {
+            _ data = ctx.scope_get_type_data(struct_name);
+            id = data.asm_id;
+            if (not (is_struct_type(data.type)
+                     and data.type.get_members().empty())) {
+                err("redefinition", ast.loc);
+            }
+        } catch (t_undefined_name_error) {
+            id = prog.make_new_id();
         }
-        ctx.def_type(name, {type, id});
+        ctx.put_struct(struct_name, {type, id});
+        prog.def_struct(id, ctx.asmt(type, true));
         return type;
     } else if (ast.children.size() == 1 and ast[0].uu == "enum") {
         _ name = (ast[0].vv == "") ? make_anon_type_id() : ast[0].vv;

@@ -142,7 +142,6 @@ t_type::t_type(t_type_kind k, const std::string& n,
             if ((size % al) != 0) {
                 size += al - (size % al);
             }
-            idx++;
         }
         kind = k;
         name = n;
