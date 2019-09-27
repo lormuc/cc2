@@ -3,18 +3,20 @@
 #include <string>
 #include <vector>
 
-struct t_asm_val {
-    std::string type;
-    std::string name;
+#include "misc.hpp"
 
-    std::string join() const {
+struct t_asm_val {
+    str type;
+    str name;
+
+    str join() const {
         return type + " " + name;
     }
 };
 
 struct t_asm_case {
     t_asm_val val;
-    std::string label;
+    str label;
 };
 
 class t_prog {
@@ -22,47 +24,42 @@ class t_prog {
     int str_cnt = 0;
     int label_cnt = 0;
     int id_cnt = 0;
-    std::string asm_funcs;
-    std::string global_storage;
-    std::string asm_type_defs;
-    std::string func_body;
-    std::string func_var_alloc;
+    str asm_funcs;
+    str global_storage;
+    str asm_type_defs;
+    str func_body;
+    str func_var_alloc;
 
-    void a(const std::string&);
-    std::string aa(const std::string&);
-    void append(std::string&, const std::string&);
+    void a(const str&);
+    str aa(const str&);
+    void append(str&, const str&);
 
 public:
-    std::string def_str(const std::string& str);
-    std::string make_new_id();
+    str def_str(const str& str);
+    str make_new_id();
     void def_main();
-    void def_struct(const std::string& name, const std::string& type);
-    std::string def_var(const std::string& type);
-    std::string assemble();
-    void put_label(const std::string&, bool = true);
-    std::string make_label();
-    void cond_br(const std::string&, const std::string&, const std::string&);
-    void br(const std::string&);
+    void def_struct(const str& name, const str& type);
+    str def_var(const str& type);
+    str assemble();
+    void put_label(const str&, bool = true);
+    str make_label();
+    void cond_br(const str&, const str&, const str&);
+    void br(const str&);
     void noop();
-    std::string member(const t_asm_val& v, int i);
-    std::string load(const t_asm_val& v);
+    str member(const t_asm_val& v, int i);
+    str load(const t_asm_val& v);
     void store(const t_asm_val& x, const t_asm_val& y);
-    std::string apply(const std::string& op, const t_asm_val& x,
-                      const t_asm_val& y);
-    std::string convert(const std::string& op, const t_asm_val& x,
-                        const std::string& t);
-    std::string apply_rel(const std::string& op, const t_asm_val& x,
-                          const t_asm_val& y);
-    std::string apply_rel(const std::string& op, const t_asm_val& x,
-                          const std::string& y);
-    std::string inc_ptr(const t_asm_val& x, const t_asm_val& y);
-    std::string call_printf(const std::vector<t_asm_val>& args);
-    std::string bit_not(const t_asm_val& x);
-    std::string phi(const t_asm_val& x, const std::string& l0,
-                    const t_asm_val& y, const std::string& l1);
+    str apply(const str& op, const t_asm_val& x, const t_asm_val& y);
+    str convert(const str& op, const t_asm_val& x, const str& t);
+    str apply_rel(const str& op, const t_asm_val& x, const t_asm_val& y);
+    str apply_rel(const str& op, const t_asm_val& x, const str& y);
+    str inc_ptr(const t_asm_val& x, const t_asm_val& y);
+    str call_printf(const vec<t_asm_val>& args);
+    str bit_not(const t_asm_val& x);
+    str phi(const t_asm_val& x, const str& l0,
+            const t_asm_val& y, const str& l1);
     void ret(const t_asm_val&);
     void silence(bool);
     bool silence();
-    void switch_(const t_asm_val&, const std::string&,
-                 const std::vector<t_asm_case>&);
+    void switch_(const t_asm_val&, const str&, const vec<t_asm_case>&);
 };

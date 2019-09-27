@@ -5,8 +5,15 @@
 #include <sstream>
 #include <fstream>
 #include <string>
+#include <iostream>
 
 #define _ auto
+
+using str = std::string;
+using std::cout;
+
+template<class t>
+using vec = std::vector<t>;
 
 struct t_loc {
     int line = -1;
@@ -36,7 +43,7 @@ struct t_loc {
 class t_compile_error : public std::runtime_error {
     t_loc loc;
 public:
-    t_compile_error(const std::string& n_str, t_loc n_loc = t_loc())
+    t_compile_error(const str& n_str, t_loc n_loc = t_loc())
         : std::runtime_error(n_str), loc(n_loc) {
     }
     int line() const {
@@ -50,13 +57,10 @@ public:
     }
 };
 
-typedef unsigned long long ull;
-typedef unsigned ui;
-
 template <class t>
-auto has(const std::vector<t>& c, const t& e) {
+auto has(const vec<t>& c, const t& e) {
     return std::find(c.begin(), c.end(), e) != c.end();
 }
 
-std::string read_file_into_string(std::ifstream&);
-std::string print_bytes(const std::string&);
+str read_file_into_string(std::ifstream&);
+str print_bytes(const str&);

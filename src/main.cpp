@@ -18,9 +18,7 @@
 #include "misc.hpp"
 #include "type.hpp"
 
-using namespace std;
-
-ofstream log;
+std::ofstream log;
 
 void sep() {
     log << "\n";
@@ -46,7 +44,7 @@ void print(const t_ast& t, unsigned level = 0) {
     log.flush();
 }
 
-void print(const list<t_lexeme>& ll) {
+void print(const std::list<t_lexeme>& ll) {
     for (_& l : ll) {
         log << l.uu;
         if (not l.vv.empty()) {
@@ -57,8 +55,8 @@ void print(const list<t_lexeme>& ll) {
     log.flush();
 }
 
-_ get_line_pos(const string& src, int line) {
-    _ i = 0;
+_ get_line_pos(const str& src, int line) {
+    size_t i = 0;
     _ line_count = 0;
     if (line_count != line) {
         while (i < src.size()) {
@@ -74,7 +72,7 @@ _ get_line_pos(const string& src, int line) {
     return i;
 }
 
-_ preprocess(list<t_lexeme>& ll) {
+_ preprocess(std::list<t_lexeme>& ll) {
     _ it = ll.begin();
     while (it != ll.end()) {
         _ in_pp = ((*it).uu == "#");
@@ -91,10 +89,10 @@ _ preprocess(list<t_lexeme>& ll) {
     }
 }
 
-_ escape_seqs(list<t_lexeme>& ll) {
+_ escape_seqs(std::list<t_lexeme>& ll) {
     for (_& l : ll) {
         if (l.uu == "char_constant" or l.uu == "string_literal") {
-            string new_str;
+            str new_str;
             size_t i = 0;
             while (i < l.vv.length()) {
                 if (i+1 < l.vv.length()
@@ -111,7 +109,7 @@ _ escape_seqs(list<t_lexeme>& ll) {
     }
 }
 
-const set<string> keywords = {
+const std::set<str> keywords = {
     "int", "return", "if", "else", "while", "for", "do",
     "continue", "break", "struct", "float",
     "char", "unsigned", "void", "_", "case", "const",
@@ -120,7 +118,7 @@ const set<string> keywords = {
     "switch", "typedef", "union", "volatile"
 };
 
-_ convert_lexemes(list<t_lexeme>& ll) {
+_ convert_lexemes(std::list<t_lexeme>& ll) {
     _ it = ll.begin();
     while (it != ll.end()) {
         if ((*it).uu == "newline") {
@@ -133,9 +131,9 @@ _ convert_lexemes(list<t_lexeme>& ll) {
                 (*it).vv = "";
             }
         } else if ((*it).uu == "pp_number") {
-            if ((*it).vv.find('.') != string::npos or
-                (((*it).vv.find('e') != string::npos
-                  or (*it).vv.find('E') != string::npos)
+            if ((*it).vv.find('.') != str::npos or
+                (((*it).vv.find('e') != str::npos
+                  or (*it).vv.find('E') != str::npos)
                  and not ((*it).vv.length() >= 2
                           and ((*it).vv[1] == 'x'
                                or (*it).vv[1] == 'X')))) {
@@ -153,12 +151,12 @@ _ convert_lexemes(list<t_lexeme>& ll) {
 
 int main(int argc, char** argv) {
     if (argc != 3) {
-        cerr << "error : bad argument list\n";
+        std::cerr << "error : bad argument list\n";
         return 1;
     }
-    ifstream is(argv[1]);
+    std::ifstream is(argv[1]);
     if (!is.good()) {
-        cerr << "error : could not open input file\n";
+        std::cerr << "error : could not open input file\n";
         return 1;
     }
 
@@ -181,33 +179,33 @@ int main(int argc, char** argv) {
         sep();
         _ res = gen_asm(ast);
         log << res;
-        ofstream os(argv[2]);
+        std::ofstream os(argv[2]);
         if (!os.good()) {
-            cerr << "error : could not open output file\n";
+            std::cerr << "error : could not open output file\n";
             return 1;
         }
         os << res;
     } catch (const t_compile_error& e) {
         _ is_loc_valid = (e.get_loc() != t_loc());
         if (is_loc_valid) {
-            cerr << (e.line() + 1) << ":" << (e.column() + 1) << ": ";
+            std::cerr << (e.line() + 1) << ":" << (e.column() + 1) << ": ";
         }
-        cerr << "error: ";
-        cerr << e.what() << "\n";
+        std::cerr << "error: ";
+        std::cerr << e.what() << "\n";
         if (is_loc_valid) {
             _ i = get_line_pos(src, e.line());
             for (_ j = i; j < src.size() and src[j] != '\n'; j++) {
-                cerr << src[j];
+                std::cerr << src[j];
             }
-            cerr << "\n";
-            for (size_t j = 0; j < e.column(); j++) {
-                cerr << " ";
+            std::cerr << "\n";
+            for (_ j = 0; j < e.column(); j++) {
+                std::cerr << " ";
             }
-            cerr << "^";
-            cerr << "\n";
+            std::cerr << "^";
+            std::cerr << "\n";
         }
         return 1;
-    } catch (const exception& e) {
-        cerr << "unknown error: " << e.what() << "\n";
+    } catch (const std::exception& e) {
+        std::cerr << "unknown error: " << e.what() << "\n";
     }
 }

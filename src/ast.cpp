@@ -15,7 +15,7 @@ const _ debug = true;
 
 using namespace std;
 
-extern const vector<string> type_specifiers = {
+extern const vec<str> type_specifiers = {
     "void", "char", "short", "int", "long", "float", "double",
     "signed", "unsigned"
 };
@@ -71,7 +71,7 @@ namespace {
         }
     }
 
-    _ apply_rule(_ rule, const string& rule_name) {
+    _ apply_rule(_ rule, const str& rule_name) {
         if (debug) {
             _ loc = peek().loc;
             cout << loc.line << ":" << loc.column << " " << rule_name << "\n";
@@ -121,7 +121,7 @@ namespace {
         return res;
     }
 
-    _ cmp(const string& name) {
+    _ cmp(const str& name) {
         return peek().uu == name;
     }
 
@@ -129,7 +129,7 @@ namespace {
         return ll_it == lexeme_list.end() or cmp("eof");
     }
 
-    _ pop(const string& name) {
+    _ pop(const str& name) {
         if (not cmp(name)) {
             throw t_parse_error("expected " + name, peek().loc);
         }
@@ -225,7 +225,7 @@ namespace {
 
     _ un_exp_() {
         t_ast res;
-        vector<string> un_ops = {"&", "*", "+", "-", "~", "!"};
+        vec<str> un_ops = {"&", "*", "+", "-", "~", "!"};
         if (cmp("++")) {
             res = t_ast("prefix_increment", peek().loc);
             advance();
@@ -358,8 +358,8 @@ namespace {
     _ cast_exp_() { return or_(un_exp, cast); }
     def_rule(cast_exp);
 
-    _ left_assoc_bin_op(const vector<string>& ops,
-                           function<t_ast()> subexp) {
+    _ left_assoc_bin_op(const vec<str>& ops,
+                        function<t_ast()> subexp) {
         _ res = subexp();
         while (true) {
             _ op = peek().uu;
@@ -442,7 +442,7 @@ namespace {
 
     _ assign_() {
         _ x = un_exp();
-        vector<string> ops = {
+        vec<str> ops = {
             "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=",
             "^=", "|="
         };

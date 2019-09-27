@@ -9,7 +9,7 @@
 
 class t_parse_error : public t_compile_error {
 public:
-    t_parse_error(const std::string& str, t_loc loc)
+    t_parse_error(const str& str, t_loc loc)
         : t_compile_error("parse error: " + str, loc) {
     }
     t_parse_error(t_loc loc)
@@ -18,9 +18,9 @@ public:
 };
 
 struct t_ast {
-    std::string uu;
-    std::string vv;
-    std::vector<t_ast> children;
+    str uu;
+    str vv;
+    vec<t_ast> children;
     t_loc loc;
 
     t_ast() {}
@@ -29,37 +29,37 @@ struct t_ast {
         children.push_back(x);
     }
 
-    t_ast(const std::string& u, const std::string& v,
-          const std::vector<t_ast>& c) {
+    t_ast(const str& u, const str& v,
+          const vec<t_ast>& c) {
         uu = u;
         vv = v;
         children = c;
     }
 
-    t_ast(const std::string& u) {
+    t_ast(const str& u) {
         uu = u;
     }
 
-    t_ast(const std::string& u, const std::vector<t_ast>& c) {
+    t_ast(const str& u, const vec<t_ast>& c) {
         uu = u;
         children = c;
     }
 
-    t_ast(const std::string& u, const std::string& v) {
+    t_ast(const str& u, const str& v) {
         uu = u;
         vv = v;
     }
 
-    t_ast(const std::vector<t_ast>& c) {
+    t_ast(const vec<t_ast>& c) {
         children = c;
     }
 
-    t_ast(const std::string& u, t_loc _loc) {
+    t_ast(const str& u, t_loc _loc) {
         uu = u;
         loc = _loc;
     }
 
-    t_ast(const std::string& u, const std::string& v, t_loc _loc) {
+    t_ast(const str& u, const str& v, t_loc _loc) {
         uu = u;
         vv = v;
         loc = _loc;
@@ -84,4 +84,4 @@ struct t_ast {
 
 t_ast parse_program(const std::list<t_lexeme>&);
 
-extern const std::vector<std::string> type_specifiers;
+extern const vec<str> type_specifiers;

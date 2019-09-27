@@ -10,9 +10,7 @@
 #include "misc.hpp"
 #include "lex.hpp"
 
-using namespace std;
-
-const vector<string> operators = {
+const vec<str> operators = {
     "...", "<<=", ">>=",
 
     "&&", "||", "==", "!=", "<=", ">=", "++", "--", "<<", ">>",
@@ -32,24 +30,24 @@ namespace {
 }
 
 class t_lexer {
-    const string& str;
+    const str& src;
     size_t idx;
     t_loc cur_loc;
     t_loc lexeme_loc;
     bool in_include = false;
-    list<t_lexeme> result;
+    std::list<t_lexeme> result;
 
-    void err(const string& str) {
-        throw t_compile_error("lexing error: " + str, lexeme_loc);
+    void err(const str& s) {
+        throw t_compile_error("lexing error: " + s, lexeme_loc);
     }
 
     _ set_state(const _& x) {
-        idx = get<0>(x);
-        cur_loc = get<1>(x);
+        idx = std::get<0>(x);
+        cur_loc = std::get<1>(x);
     }
 
     _ get_state() {
-        return make_tuple(idx, cur_loc);
+        return std::make_tuple(idx, cur_loc);
     }
 
     void check_if_in_include() {
@@ -63,16 +61,16 @@ class t_lexer {
                       and (n == 2
                            or (*next(result.end(), -3)).uu == "newline"));
     }
-    void push(const string& x, const string& val = "") {
+    void push(const str& x, const str& val = "") {
         result.push_back({x, val, lexeme_loc});
     }
-    string advance(int d = 1) {
-        string res;
-        while (d != 0 and idx < str.length()) {
-            res += str[idx];
+    str advance(int d = 1) {
+        str res;
+        while (d != 0 and idx < src.length()) {
+            res += src[idx];
             idx++;
             cur_loc.column++;
-            if (str[idx-1] == '\n') {
+            if (src[idx-1] == '\n') {
                 cur_loc.line++;
                 cur_loc.column = 0;
             }
@@ -81,23 +79,23 @@ class t_lexer {
         return res;
     }
     bool end() {
-        return idx >= str.length();
+        return idx >= src.length();
     }
     int peek(int n = 0) {
-        if (idx + n < str.length()) {
-            return str[idx + n];
+        if (idx + n < src.length()) {
+            return src[idx + n];
         }
         return -1;
     }
-    bool cmp(const std::string& x) {
-        return str.compare(idx, x.length(), x);
+    bool cmp(const str& x) {
+        return src.compare(idx, x.length(), x);
     }
-    bool cmp_or(const std::string& x) {
-        _ res = x.find(peek()) != string::npos;
+    bool cmp_or(const str& x) {
+        _ res = x.find(peek()) != str::npos;
         return res;
     }
-    bool match(const std::string& x) {
-        if (str.compare(idx, x.length(), x) == 0) {
+    bool match(const str& x) {
+        if (src.compare(idx, x.length(), x) == 0) {
             advance(x.length());
             return true;
         } else {
@@ -114,7 +112,7 @@ class t_lexer {
         return false;
     }
     bool pp_number() {
-        string val;
+        str val;
         if (is_digit(peek())) {
             val += advance();
         } else if (peek() == '.' and is_digit(peek(1))) {
@@ -141,7 +139,7 @@ class t_lexer {
         if (not is_nondigit(peek())) {
             return false;
         }
-        string val;
+        str val;
         val += advance();
         while (is_nondigit(peek()) or is_digit(peek())) {
             val += advance();
@@ -154,7 +152,7 @@ class t_lexer {
         if (peek() != '"') {
             return false;
         }
-        string val;
+        str val;
         val += advance();
         while (peek() != '"') {
             if (peek() == '\\' and peek(1) == '"') {
@@ -175,7 +173,7 @@ class t_lexer {
         if (peek() != '\'') {
             return false;
         }
-        string val;
+        str val;
         val += advance();
         while (peek() != '\'') {
             if (peek() == '\\' and peek(1) == '\'') {
@@ -221,7 +219,7 @@ class t_lexer {
         }
         _ old_state = get_state();
         if (peek() == '<') {
-            string val;
+            str val;
             val += advance();
             if (peek() == '>') {
                 err("empty header name");
@@ -237,7 +235,7 @@ class t_lexer {
             push("header_name", val);
             return true;
         } else if (peek() == '"') {
-            string val;
+            str val;
             val += advance();
             if (peek() == '"') {
                 err("empty header name");
@@ -270,19 +268,19 @@ public:
         }
         push("eof");
     }
-    const list<t_lexeme>& get_result() {
+    const std::list<t_lexeme>& get_result() {
         return result;
     }
-    t_lexer(const string& _str)
-        : str(_str)
+    t_lexer(const str& _src)
+        : src(_src)
         , idx(0)
         , cur_loc(0, 0)
         , lexeme_loc(cur_loc) {
     }
 };
 
-list<t_lexeme> lex(const string& str) {
-    t_lexer lexer(str);
+std::list<t_lexeme> lex(const str& src) {
+    t_lexer lexer(src);
     lexer.go();
     return lexer.get_result();
 }

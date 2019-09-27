@@ -1,11 +1,9 @@
 #include "misc.hpp"
 
-using namespace std;
-
-string read_file_into_string(ifstream& t) {
-    t.seekg(0, ios::end);
-    size_t size = t.tellg();
-    string buffer(size, ' ');
+str read_file_into_string(std::ifstream& t) {
+    t.seekg(0, std::ios::end);
+    _ size = t.tellg();
+    str buffer(size, ' ');
     t.seekg(0);
     t.read(buffer.data(), size);
     return buffer;
@@ -13,15 +11,15 @@ string read_file_into_string(ifstream& t) {
 
 _ hex_digit(int x) {
     if (x < 10) {
-        return string(1, '0' + x);
+        return str(1, '0' + x);
     } else {
-        return string(1, 'a' + (x - 10));
+        return str(1, 'a' + (x - 10));
     }
 }
 
-string print_bytes(const string& str) {
-    string res;
-    for (_& ch : str) {
+str print_bytes(const str& s) {
+    str res;
+    for (_& ch : s) {
         if (isprint(ch)) {
             res += ch;
         } else {

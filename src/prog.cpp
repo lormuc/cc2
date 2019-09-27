@@ -3,66 +3,64 @@
 #include "prog.hpp"
 #include "misc.hpp"
 
-using namespace std;
-
 namespace {
-    string func_line(const string& x) {
-        return string("    ") + x + "\n";
+    str func_line(const str& x) {
+        return str("    ") + x + "\n";
     }
 
-    string deref(const string& type) {
+    str deref(const str& type) {
         return type.substr(0, type.length() - 1);
     }
 }
 
-void t_prog::append(std::string& x, const std::string& y) {
+void t_prog::append(str& x, const str& y) {
     if (not silence()) {
         x += y;
     }
 }
 
-string t_prog::make_new_id() {
+str t_prog::make_new_id() {
     id_cnt++;
-    return "%_" + to_string(id_cnt);
+    return "%_" + std::to_string(id_cnt);
 }
 
-void t_prog::a(const std::string& line) {
+void t_prog::a(const str& line) {
     append(func_body, func_line(line));
 }
 
-string t_prog::aa(const std::string& line) {
+str t_prog::aa(const str& line) {
     _ res = make_new_id();
     a(res + " = " + line);
     return res;
 }
 
-void t_prog::cond_br(const string& v, const string& a1, const string& a2) {
+void t_prog::cond_br(const str& v, const str& a1, const str& a2) {
     a("br i1 " + v + ", label " + a1 + ", label " + a2);
 }
 
-void t_prog::br(const string& l) {
+void t_prog::br(const str& l) {
     a("br label " + l);
 }
 
-string t_prog::make_label() {
+str t_prog::make_label() {
     label_cnt++;
-    return "%l_" + to_string(label_cnt);
+    return "%l_" + std::to_string(label_cnt);
 }
 
-void t_prog::put_label(const string& l, bool f) {
+void t_prog::put_label(const str& l, bool f) {
     if (f) {
         a("br label " + l);
     }
     append(func_body, l.substr(1) + ":\n");
 }
 
-string t_prog::def_str(const string& str) {
+str t_prog::def_str(const str& str) {
     _ len = str.length() + 1;
-    _ name = "@str_" + to_string(str_cnt);
+    _ name = "@str_" + std::to_string(str_cnt);
     str_cnt++;
     append(global_storage, name);
     append(global_storage, " = private unnamed_addr constant [");
-    append(global_storage, to_string(len));
+    append(global_storage, std::to_string(len));
     append(global_storage, " x i8] c\"");
     append(global_storage, print_bytes(str));
     append(global_storage, "\\00\"\n");
@@ -78,12 +76,12 @@ void t_prog::def_main() {
     append(asm_funcs, "}\n");
 }
 
-void t_prog::def_struct(const string& name, const string& type) {
+void t_prog::def_struct(const str& name, const str& type) {
     append(asm_type_defs, name + " = type " + type + "\n");
 }
 
-string t_prog::assemble() {
-    string res;
+str t_prog::assemble() {
+    str res;
     res += asm_type_defs;
     res += "\n";
     res += global_storage;
@@ -98,18 +96,18 @@ void t_prog::noop() {
     aa("add i1 0, 0");
 }
 
-string t_prog::def_var(const string& type) {
+str t_prog::def_var(const str& type) {
     _ res = make_new_id();
     append(func_var_alloc, func_line(res + " = alloca " + type));
     return res;
 }
 
-string t_prog::member(const t_asm_val& v, int i) {
+str t_prog::member(const t_asm_val& v, int i) {
     return aa("getelementptr inbounds " + deref(v.type) + ", " + v.join()
-              + ", i32 0, i32 " + to_string(i));
+              + ", i32 0, i32 " + std::to_string(i));
 }
 
-string t_prog::load(const t_asm_val& v) {
+str t_prog::load(const t_asm_val& v) {
     return aa("load " + deref(v.type) + ", " + v.join());
 }
 
@@ -117,35 +115,35 @@ void t_prog::store(const t_asm_val& x, const t_asm_val& y) {
     a("store " + x.join() + ", " + y.join());
 }
 
-string t_prog::apply(const string& op, const t_asm_val& x,
-                     const t_asm_val& y) {
+str t_prog::apply(const str& op, const t_asm_val& x,
+                  const t_asm_val& y) {
     return aa(op + " " + x.type + " " + x.name + ", " + y.name);
 }
 
-string t_prog::apply_rel(const string& op, const t_asm_val& x,
-                         const t_asm_val& y) {
+str t_prog::apply_rel(const str& op, const t_asm_val& x,
+                      const t_asm_val& y) {
     _ tmp = aa(op + " " + x.join() + ", " + y.name);
     return convert("zext", {"i1", tmp}, "i32");
 }
 
-string t_prog::apply_rel(const string& op, const t_asm_val& x,
-                         const string& y) {
+str t_prog::apply_rel(const str& op, const t_asm_val& x,
+                      const str& y) {
     _ tmp = aa(op + " " + x.join() + ", " + y);
     return convert("zext", {"i1", tmp}, "i32");
 }
 
-string t_prog::convert(const string& op, const t_asm_val& x,
-                       const string& t) {
+str t_prog::convert(const str& op, const t_asm_val& x,
+                    const str& t) {
     return aa(op + " " + x.join() + " to " + t);
 }
 
-string t_prog::inc_ptr(const t_asm_val& x, const t_asm_val& y) {
+str t_prog::inc_ptr(const t_asm_val& x, const t_asm_val& y) {
     return aa("getelementptr inbounds " + deref(x.type) + ", " + x.join()
               + ", " + y.join());
 }
 
-string t_prog::call_printf(const vector<t_asm_val>& args) {
-    string args_str;
+str t_prog::call_printf(const vec<t_asm_val>& args) {
+    str args_str;
     for (_& arg : args) {
         if (args_str.empty()) {
             args_str += arg.join();
@@ -156,12 +154,12 @@ string t_prog::call_printf(const vector<t_asm_val>& args) {
     return aa("call i32 (i8*, ...) @printf(" + args_str + ")");
 }
 
-string t_prog::bit_not(const t_asm_val& x) {
+str t_prog::bit_not(const t_asm_val& x) {
     return aa("xor " + x.join() + ", -1");
 }
 
-string t_prog::phi(const t_asm_val& x, const string& l0,
-                   const t_asm_val& y, const string& l1) {
+str t_prog::phi(const t_asm_val& x, const str& l0,
+                const t_asm_val& y, const str& l1) {
     return aa("phi " + x.type + " [ " + x.name + ", " + l0 + " ], [ "
               + y.name + ", " + l1 + " ]");
 }
@@ -178,9 +176,9 @@ bool t_prog::silence() {
     return _silence;
 }
 
-void t_prog::switch_(const t_asm_val& x, const string& default_label,
-                     const vector<t_asm_case>& cases) {
-    string str;
+void t_prog::switch_(const t_asm_val& x, const str& default_label,
+                     const vec<t_asm_case>& cases) {
+    str str;
     for (_& c : cases) {
         if (str != "") {
             str += " ";

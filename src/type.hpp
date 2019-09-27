@@ -2,8 +2,10 @@
 
 #include <vector>
 #include <string>
-
 #include <stdexcept>
+#include <memory>
+#include <unordered_map>
+
 #include "misc.hpp"
 
 enum class t_type_kind {
@@ -28,125 +30,88 @@ enum class t_type_kind {
     _enum,
 };
 
-class t_type;
-
-class t_type_ptr {
-    t_type* ptr;
-    void init(const t_type* p);
-public:
-    t_type_ptr(const t_type* p = nullptr) {
-        init(p);
-    }
-    t_type_ptr(const t_type_ptr& x) {
-        init(x.ptr);
-    }
-    t_type_ptr& operator=(const t_type_ptr& x);
-    ~t_type_ptr();
-    const t_type& operator*() const {
-        return *ptr;
-    }
-    bool operator==(const t_type_ptr& x) const;
-    bool operator==(nullptr_t) const {
-        return ptr == nullptr;
-    }
-};
-
-class t_struct_member;
-
-class t_incomplete_member_type_error
-    : public std::runtime_error {
-    size_t idx;
-public:
-    t_incomplete_member_type_error(size_t _idx)
-        : std::runtime_error("member has incomplete type")
-        , idx(_idx)
-    {}
-    size_t get_idx() { return idx; }
-};
-
 class t_type {
-    t_type_kind kind;
-    bool is_size_known = false;
-    ull size = -1;
-    ui alignment = 1;
-    bool _const = false;
-    bool _volatile = false;
-    t_type_ptr subtype;
-    std::string name;
-    // array
-    int array_length = -1;
-    // struct or union
-    std::vector<t_struct_member> members;
-    // function
-    std::vector<t_type> params;
+    struct t_type_aux {
+        t_type_kind kind;
+        size_t size = 0;
+        size_t alignment = 1;
+        size_t length = 0;
+        bool _const = false;
+        bool _volatile = false;
+        str name;
+        vec<str> field_names;
+        vec<t_type> children;
+        bool operator==(const t_type_aux& x) const {
+            return (kind == x.kind
+                    and size == x.size
+                    and alignment == x.alignment
+                    and length == x.length
+                    and _const == x._const
+                    and _volatile == x._volatile
+                    and name == x.name
+                    and field_names == x.field_names
+                    and children == x.children);
+        }
+    };
+    std::shared_ptr<t_type_aux> ptr;
+    void set_size(size_t);
 public:
+    static const size_t bad_field_index = -1;
     t_type() {}
-    t_type(t_type_kind, const t_type&, int);
-    t_type(t_type_kind, const t_type&);
-    t_type(t_type_kind, const std::string&);
-    t_type(t_type_kind, const std::string&,
-           const std::vector<t_struct_member>&);
-    t_type(t_type_kind, const t_type&, const std::vector<t_type>&);
+    t_type(t_type_kind, t_type, size_t);
+    t_type(t_type_kind, t_type);
+    t_type(t_type_kind, const str&);
+    t_type(t_type_kind, const str&, vec<str>, vec<t_type>);
+    t_type(t_type_kind, vec<t_type>);
     t_type(t_type_kind);
-    void set_size(ull, ui);
     bool is_const() const;
     bool is_volatile() const;
-    t_type_kind get_kind() const;
-    bool get_is_size_known() const;
-    ull get_size() const;
-    ui get_alignment() const;
-    const t_type& get_return_type() const;
-    const t_type& get_pointee_type() const;
-    const t_type& get_element_type() const;
-    int get_length() const;
-    bool has_unknown_length() const;
-    int get_member_index(const std::string&) const;
-    t_type get_member_type(int i) const;
+    t_type_kind kind() const;
+    size_t size() const;
+    size_t alignment() const;
+    t_type return_type() const;
+    t_type pointee_type() const;
+    t_type element_type() const;
+    size_t length() const;
+    size_t field_index(const str&) const;
+    t_type field(size_t) const;
+    const str& name() const;
+    const vec<t_type>& fields() const;
+    const vec<t_type>& params() const;
+    const vec<str>& field_names() const;
+    bool operator==(t_type) const;
+    bool is_array() const;
+    bool is_function() const;
+    bool is_struct() const;
+    bool is_enum() const;
+    bool is_union() const;
+    bool is_pointer() const;
+    bool is_integral() const;
+    bool is_floating() const;
+    bool is_arithmetic() const;
+    bool is_scalar() const;
+    bool is_signed_integer() const;
+    bool is_unsigned_integer() const;
+    bool is_signed() const;
+    bool is_unsigned() const;
+    bool is_integer() const;
+    bool is_object() const;
     bool is_complete() const;
-    const std::string& get_name() const;
-    const std::vector<t_struct_member>& get_members() const;
-    const std::vector<t_type>& get_params() const;
-    bool operator==(const t_type&) const;
+    bool is_incomplete() const;
+    bool is_pointer_to_object() const;
 };
 
-struct t_struct_member {
-    std::string id;
-    t_type type;
-    bool operator==(const t_struct_member& x) const {
-        return id == x.id and type == x.type;
-    }
-};
-
-t_type make_function_type(const t_type&, const std::vector<t_type>&);
-t_type make_basic_type(const std::string&);
-t_type make_pointer_type(const t_type&);
-t_type make_array_type(const t_type&);
-t_type make_array_type(const t_type&, unsigned);
-t_type make_struct_type(const std::string&,
-                        const std::vector<t_struct_member>&);
-t_type make_struct_type(const std::string&);
-t_type make_enum_type(const std::string&);
-bool is_array_type(const t_type&);
-bool is_function_type(const t_type&);
-bool is_struct_type(const t_type&);
-bool is_enum_type(const t_type&);
-bool is_pointer_type(const t_type&);
-bool is_integral_type(const t_type&);
-bool is_floating_type(const t_type&);
-bool is_arithmetic_type(const t_type&);
-bool is_scalar_type(const t_type&);
-bool is_signed_integer_type(const t_type&);
-bool is_unsigned_integer_type(const t_type&);
-bool is_signed_type(const t_type& t);
-bool is_unsigned_type(const t_type& t);
-bool is_integer_type(const t_type& t);
-bool compatible(const t_type&, const t_type&);
-
-t_type unqualify(const t_type&);
-bool is_object_type(const t_type& x);
-bool is_qualified_void(const t_type& t);
-
-std::string stringify(const t_type&, std::string id = "");
+t_type make_function_type(t_type, const vec<t_type>&);
+t_type make_basic_type(const str&);
+t_type make_pointer_type(t_type);
+t_type make_array_type(t_type);
+t_type make_array_type(t_type, size_t);
+t_type make_struct_type(const str&, vec<str>, vec<t_type>);
+t_type make_struct_type(const str&);
+t_type make_enum_type(const str&);
+t_type unqualify(t_type);
+bool compatible(t_type, t_type);
+str stringify(t_type, str name = "");
 
 extern const t_type char_type;
 extern const t_type s_char_type;

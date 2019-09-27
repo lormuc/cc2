@@ -5,7 +5,7 @@
 #include "type.hpp"
 
 class t_val {
-    std::string _asm_id;
+    str _asm_id;
     t_type _type;
     bool _is_lvalue = false;
     bool _is_constant = false;
@@ -18,7 +18,7 @@ class t_val {
 
 public:
     t_val() { _type = void_type; }
-    t_val(const std::string&, const t_type&, bool n_is_lvalue = false);
+    t_val(const str&, const t_type&, bool n_is_lvalue = false);
     t_val(void* p);
     t_val(unsigned long x, const t_type& t) { i_init(t, x); }
     t_val(bool x, const t_type& t) { i_init(t, x); }
@@ -29,7 +29,7 @@ public:
     t_val(unsigned short x) { i_init(u_short_type, x); }
     t_val(unsigned int x) { i_init(u_int_type, x); }
     t_val(unsigned long x) { i_init(u_long_type, x); }
-    t_val(ull x) { i_init(u_long_type, x); }
+    t_val(unsigned long long x) { i_init(u_long_type, x); }
     t_val(signed char x) { i_init(s_char_type, x); }
     t_val(signed short x) { i_init(short_type, x); }
     t_val(signed int x) { i_init(int_type, x); }
@@ -37,7 +37,7 @@ public:
     t_val(float x) { f_init(float_type, x); }
     t_val(double x) { f_init(double_type, x); }
     t_val(long double x) { f_init(long_double_type, x); }
-    std::string asm_id() const { return _asm_id; }
+    str asm_id() const { return _asm_id; }
     const t_type& type() const { return _type; }
     bool is_lvalue() const { return _is_lvalue; }
     bool is_constant() const { return _is_constant; }

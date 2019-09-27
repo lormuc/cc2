@@ -5,8 +5,6 @@
 #include "gen.hpp"
 #include "exp.hpp"
 
-using namespace std;
-
 class t_bad_operands {};
 
 class t_conversion_error : public t_compile_error {
@@ -21,10 +19,10 @@ namespace {
     t_val gen_neg(const t_val& x, const t_ctx& ctx);
     t_val gen_eq(t_val x, t_val y, const t_ctx& ctx);
 
-    void err(const string& str, t_loc loc) {
+    void err(const str& str, t_loc loc) {
         throw t_compile_error(str, loc);
     }
-    bool is_modifiable_lvalue(const t_val& x) {
+    bool is_modifiable_lvalue(const t_val&) {
         return true;
     }
 
@@ -35,15 +33,11 @@ namespace {
 
     bool is_null(const t_val& x) {
         return (x.is_constant()
-                and ((is_integral_type(x.type()) and x.is_false())
+                and ((x.type().is_integral() and x.is_false())
                      or x.is_void_null()));
     }
 
-    bool is_pointer_to_object_type(const t_type& x) {
-        return true;
-    }
-
-    t_val apply(string op, const t_val& x, const t_val& y, const t_ctx& ctx) {
+    t_val apply(str op, const t_val& x, const t_val& y, const t_ctx& ctx) {
         _ res_id = prog.apply(op, ctx.asmv(x), ctx.asmv(y));
         return t_val(res_id, x.type());
     }
@@ -57,9 +51,9 @@ namespace {
     }
 
     bool ptrs_to_compatible(const t_val& x, const t_val& y) {
-        return (is_pointer_type(x.type()) and is_pointer_type(y.type())
-                and compatible(unqualify(x.type().get_pointee_type()),
-                               unqualify(y.type().get_pointee_type())));
+        return (x.type().is_pointer() and y.type().is_pointer()
+                and compatible(unqualify(x.type().pointee_type()),
+                               unqualify(y.type().pointee_type())));
     }
 
     void gen_arithmetic_conversions(t_val& x, t_val& y, const t_ctx& ctx) {
@@ -92,30 +86,30 @@ namespace {
     }
 
     t_val gen_sub(t_val x, t_val y, const t_ctx& ctx) {
-        if (is_arithmetic_type(x.type()) and is_arithmetic_type(y.type())) {
+        if (x.type().is_arithmetic() and y.type().is_arithmetic()) {
             gen_arithmetic_conversions(x, y, ctx);
             if (x.is_constant() and y.is_constant()) {
                 return x - y;
             }
-            string op;
-            if (is_signed_integer_type(x.type())) {
+            str op;
+            if (x.type().is_signed_integer()) {
                 op = "sub nsw";
-            } else if (is_floating_type(x.type())) {
+            } else if (x.type().is_floating()) {
                 op = "fsub";
             } else {
                 op = "sub";
             }
             return apply(op, x, y, ctx);
         } else if (ptrs_to_compatible(x, y)) {
-            _& w = x.type().get_pointee_type();
+            _ w = x.type().pointee_type();
             x = gen_conversion(uintptr_t_type, x, ctx);
             y = gen_conversion(uintptr_t_type, y, ctx);
             _ v_id = apply("sub", x, y, ctx).asm_id();
             _ v = t_val(v_id, ptrdiff_t_type);
-            return apply("sdiv exact", v, w.get_size(), ctx);
-        } else if (is_pointer_type(x.type())
-                   and is_object_type(x.type().get_pointee_type())
-                   and is_integral_type(y.type())) {
+            return apply("sdiv exact", v, w.size(), ctx);
+        } else if (x.type().is_pointer()
+                   and x.type().pointee_type().is_object()
+                   and y.type().is_integral()) {
             y = gen_conversion(uintptr_t_type, y, ctx);
             y = gen_neg(y, ctx);
             _ res_id = prog.inc_ptr(ctx.asmv(x), ctx.asmv(y));
@@ -135,19 +129,19 @@ namespace {
     }
 
     t_val dereference(const t_val& v) {
-        return t_val(v.asm_id(), v.type().get_pointee_type(), true);
+        return t_val(v.asm_id(), v.type().pointee_type(), true);
     }
 
     t_val gen_lt(t_val x, t_val y, const t_ctx& ctx) {
-        if (is_arithmetic_type(x.type()) and is_arithmetic_type(y.type())) {
+        if (x.type().is_arithmetic() and y.type().is_arithmetic()) {
             gen_arithmetic_conversions(x, y, ctx);
             if (x.is_constant() and y.is_constant()) {
                 return x < y;
             }
-            string op;
-            if (is_signed_integer_type(x.type())) {
+            str op;
+            if (x.type().is_signed_integer()) {
                 op = "icmp slt";
-            } else if (is_floating_type(x.type())) {
+            } else if (x.type().is_floating()) {
                 op = "fcmp olt";
             } else {
                 op = "icmp ult";
@@ -165,7 +159,7 @@ namespace {
 
     _ gen_and(t_val x, t_val y, const t_ctx& ctx) {
         gen_arithmetic_conversions(x, y, ctx);
-        if (not (is_integer_type(x.type()) and is_integer_type(y.type()))) {
+        if (not (x.type().is_integer() and y.type().is_integer())) {
             throw t_bad_operands();
         }
         if (x.is_constant() and y.is_constant()) {
@@ -176,7 +170,7 @@ namespace {
 
     _ gen_xor(t_val x, t_val y, const t_ctx& ctx) {
         gen_arithmetic_conversions(x, y, ctx);
-        if (not (is_integer_type(x.type()) and is_integer_type(y.type()))) {
+        if (not (x.type().is_integer() and y.type().is_integer())) {
             throw t_bad_operands();
         }
         if (x.is_constant() and y.is_constant()) {
@@ -187,7 +181,7 @@ namespace {
 
     _ gen_or(t_val x, t_val y, const t_ctx& ctx) {
         gen_arithmetic_conversions(x, y, ctx);
-        if (not (is_integer_type(x.type()) and is_integer_type(y.type()))) {
+        if (not (x.type().is_integer() and y.type().is_integer())) {
             throw t_bad_operands();
         }
         if (x.is_constant() and y.is_constant()) {
@@ -197,26 +191,26 @@ namespace {
     }
 
     t_val gen_eq(t_val x, t_val y, const t_ctx& ctx) {
-        if (is_arithmetic_type(x.type()) and is_arithmetic_type(y.type())) {
+        if (x.type().is_arithmetic() and y.type().is_arithmetic()) {
             gen_arithmetic_conversions(x, y, ctx);
             if (x.is_constant() and y.is_constant()) {
                 return x == y;
             }
-            string op;
-            if (is_floating_type(x.type())) {
+            str op;
+            if (x.type().is_floating()) {
                 op = "fcmp oeq";
             } else {
                 op = "icmp eq";
             }
             _ res_id = prog.apply_rel(op, ctx.asmv(x), ctx.asmv(y));
             return t_val(res_id, int_type);
-        } else if (is_pointer_type(x.type()) or is_pointer_type(y.type())) {
+        } else if (x.type().is_pointer() or y.type().is_pointer()) {
             if (ptrs_to_compatible(x, y)) {
                 y = gen_conversion(x.type(), y, ctx);
-            } else if (is_null(y) or (is_pointer_to_object_type(y.type())
+            } else if (is_null(y) or (y.type().is_pointer_to_object()
                                       and unqualify(x.type()) == void_type)) {
                 y = gen_conversion(x.type(), y, ctx);
-            } else if (is_null(x) or (is_pointer_to_object_type(x.type())
+            } else if (is_null(x) or (x.type().is_pointer_to_object()
                                       and unqualify(y.type()) == void_type)) {
                 x = gen_conversion(y.type(), x, ctx);
             } else {
@@ -230,18 +224,18 @@ namespace {
     }
 
     t_val gen_mul(t_val x, t_val y, const t_ctx& ctx) {
-        if (not (is_arithmetic_type(x.type())
-                 and is_arithmetic_type(y.type()))) {
+        if (not (x.type().is_arithmetic()
+                 and y.type().is_arithmetic())) {
             throw t_bad_operands();
         }
         gen_arithmetic_conversions(x, y, ctx);
         if (x.is_constant() and y.is_constant()) {
             return x * y;
         }
-        string op;
-        if (is_signed_integer_type(x.type())) {
+        str op;
+        if (x.type().is_signed_integer()) {
             op = "mul nsw";
-        } else if (is_floating_type(x.type())) {
+        } else if (x.type().is_floating()) {
             op = "fmul";
         } else {
             op = "mul";
@@ -250,15 +244,15 @@ namespace {
     }
 
     t_val gen_mod(t_val x, t_val y, const t_ctx& ctx) {
-        if (not (is_integral_type(x.type()) and is_integral_type(y.type()))) {
+        if (not (x.type().is_integral() and y.type().is_integral())) {
             throw t_bad_operands();
         }
         gen_arithmetic_conversions(x, y, ctx);
         if (x.is_constant() and y.is_constant()) {
             return x % y;
         }
-        string op;
-        if (is_signed_integer_type(x.type())) {
+        str op;
+        if (x.type().is_signed_integer()) {
             op = "srem";
         } else {
             op = "urem";
@@ -269,14 +263,14 @@ namespace {
     t_val gen_shr(t_val x, t_val y, const t_ctx& ctx) {
         gen_int_promotion(x, ctx);
         gen_int_promotion(y, ctx);
-        if (not (is_integer_type(x.type()) and is_integer_type(y.type()))) {
+        if (not (x.type().is_integer() and y.type().is_integer())) {
             throw t_bad_operands();
         }
         if (x.is_constant() and y.is_constant()) {
             return x >> y;
         }
-        string op;
-        if (is_signed_integer_type(x.type())) {
+        str op;
+        if (x.type().is_signed_integer()) {
             op = "ashr";
         } else {
             op = "lshr";
@@ -287,7 +281,7 @@ namespace {
     t_val gen_shl(t_val x, t_val y, const t_ctx& ctx) {
         gen_int_promotion(x, ctx);
         gen_int_promotion(y, ctx);
-        if (not (is_integer_type(x.type()) and is_integer_type(y.type()))) {
+        if (not (x.type().is_integer() and y.type().is_integer())) {
             throw t_bad_operands();
         }
         if (x.is_constant() and y.is_constant()) {
@@ -297,17 +291,17 @@ namespace {
     }
 
     t_val gen_div(t_val x, t_val y, const t_ctx& ctx) {
-        if (not (is_arithmetic_type(x.type()) and is_arithmetic_type(y.type()))) {
+        if (not (x.type().is_arithmetic() and y.type().is_arithmetic())) {
             throw t_bad_operands();
         }
         gen_arithmetic_conversions(x, y, ctx);
         if (x.is_constant() and y.is_constant()) {
             return x / y;
         }
-        string op;
-        if (is_floating_type(x.type())) {
+        str op;
+        if (x.type().is_floating()) {
             op = "fdiv";
-        } else if (is_signed_integer_type(x.type())) {
+        } else if (x.type().is_signed_integer()) {
             op = "sdiv";
         } else {
             op = "udiv";
@@ -316,24 +310,24 @@ namespace {
     }
 
     t_val gen_add(t_val x, t_val y, const t_ctx& ctx) {
-        if (is_integral_type(x.type()) and is_pointer_type(y.type())) {
-            swap(x, y);
+        if (x.type().is_integral() and y.type().is_pointer()) {
+            std::swap(x, y);
         }
-        if (is_arithmetic_type(x.type()) and is_arithmetic_type(y.type())) {
+        if (x.type().is_arithmetic() and y.type().is_arithmetic()) {
             gen_arithmetic_conversions(x, y, ctx);
             if (x.is_constant() and y.is_constant()) {
                 return x + y;
             }
-            string op;
-            if (is_signed_integer_type(x.type())) {
+            str op;
+            if (x.type().is_signed_integer()) {
                 op = "add nsw";
-            } else if (is_floating_type(x.type())) {
+            } else if (x.type().is_floating()) {
                 op = "fadd";
             } else {
                 op = "add";
             }
             return apply(op, x, y, ctx);
-        } else if (is_pointer_type(x.type()) and is_integral_type(y.type())) {
+        } else if (x.type().is_pointer() and y.type().is_integral()) {
             y = gen_conversion(uintptr_t_type, y, ctx);
             _ res_id = prog.inc_ptr(ctx.asmv(x), ctx.asmv(y));
             return t_val(res_id, x.type());
@@ -372,16 +366,16 @@ namespace {
             unsigned long w;
             try {
                 w = stoul(ast.vv, 0, 0);
-            } catch (out_of_range) {
+            } catch (std::out_of_range) {
                 err("unrepresentable value", ast.loc);
-            } catch (invalid_argument) {
+            } catch (std::invalid_argument) {
                 err("bad value", ast.loc);
             }
-            _ u_suf = (ast.vv.find('u') != string::npos
-                       or ast.vv.find('U') != string::npos);
-            _ l_suf = (ast.vv.find('l') != string::npos
-                       or ast.vv.find('L') != string::npos);
-            vector<t_type> types;
+            _ u_suf = (ast.vv.find('u') != str::npos
+                       or ast.vv.find('U') != str::npos);
+            _ l_suf = (ast.vv.find('l') != str::npos
+                       or ast.vv.find('L') != str::npos);
+            vec<t_type> types;
             if (not u_suf and not l_suf) {
                 if (ast.vv[0] == '0') {
                     types = {int_type, u_int_type, long_type, u_long_type};
@@ -421,7 +415,7 @@ namespace {
             res = ctx.get_var_data(ast.vv);
         } else if (op == "+" and arg_cnt == 1) {
             res = gen_exp(ast[0], ctx);
-            if (not is_arithmetic_type(res.type())) {
+            if (not res.type().is_arithmetic()) {
                 throw t_bad_operands();
             }
             gen_int_promotion(res, ctx);
@@ -433,25 +427,25 @@ namespace {
             res = adr(w);
         } else if (op == "*" and arg_cnt == 1) {
             _ e = gen_exp(ast[0], ctx);
-            if (not is_pointer_type(e.type())) {
+            if (not e.type().is_pointer()) {
                 throw t_bad_operands();
             }
             res = dereference(e);
         } else if (op == "-" and arg_cnt == 1) {
             _ e = gen_exp(ast[0], ctx);
-            if (not is_arithmetic_type(e.type())) {
+            if (not e.type().is_arithmetic()) {
                 throw t_bad_operands();
             }
             res = gen_neg(e, ctx);
         } else if (op == "!" and arg_cnt == 1) {
             _ e = gen_exp(ast[0], ctx);
-            if (not is_scalar_type(e.type())) {
+            if (not e.type().is_scalar()) {
                 throw t_bad_operands();
             }
             res = gen_is_zero(e, ctx);
         } else if (op == "~" and arg_cnt == 1) {
             x = gen_exp(ast[0], ctx);
-            if (not is_integral_type(x.type())) {
+            if (not x.type().is_integral()) {
                 throw t_bad_operands();
             }
             gen_int_promotion(x, ctx);
@@ -546,8 +540,7 @@ namespace {
                 prog.cond_br(gen_is_zero_i1(x, ctx), l1, l2);
                 put_label(l2, false);
                 y = gen_exp(ast[1], ctx);
-                if (not (is_scalar_type(x.type())
-                         and is_scalar_type(y.type()))) {
+                if (not (x.type().is_scalar() and x.type().is_scalar())) {
                     throw t_bad_operands();
                 }
                 _ w = gen_is_nonzero(y, ctx);
@@ -575,8 +568,7 @@ namespace {
                 prog.cond_br(gen_is_zero_i1(x, ctx), l2, l1);
                 put_label(l2, false);
                 y = gen_exp(ast[1], ctx);
-                if (not (is_scalar_type(x.type())
-                         and is_scalar_type(y.type()))) {
+                if (not (x.type().is_scalar() and y.type().is_scalar())) {
                     throw t_bad_operands();
                 }
                 _ w = gen_is_nonzero(y, ctx);
@@ -610,7 +602,7 @@ namespace {
             res = gen_exp(ast[1], ctx);
         } else if (op == "function_call") {
             if (ast[0] == t_ast("identifier", "printf")) {
-                vector<t_asm_val> args;
+                vec<t_asm_val> args;
                 for (_ i = size_t(1); i < ast.children.size(); i++) {
                     _ e = gen_exp(ast[i], ctx);
                     if (e.type() == float_type) {
@@ -620,21 +612,21 @@ namespace {
                 }
                 res = t_val(prog.call_printf(args), int_type);
             } else {
-                throw runtime_error("unknown function");
+                throw std::runtime_error("unknown function");
             }
         } else if (op == "struct_member") {
             x = gen_exp(ast[0], ctx, false);
-            _ m = ast[1].vv;
-            if (not is_struct_type(x.type())) {
+            _ field_name = ast[1].vv;
+            if (not x.type().is_struct()) {
                 throw t_bad_operands();
             }
-            _ struct_name = x.type().get_name();
+            _ struct_name = x.type().name();
             _ type = ctx.get_type_data(struct_name).type;
-            _ idx = type.get_member_index(m);
-            if (idx == -1) {
+            _ idx = type.field_index(field_name);
+            if (idx == t_type::bad_field_index) {
                 throw t_bad_operands();
             }
-            _ res_type = type.get_member_type(idx);
+            _ res_type = type.field(idx);
             _ res_id = prog.member(ctx.asmv(x), idx);
             res = t_val(res_id, res_type, x.is_lvalue());
         } else if (op == "array_subscript") {
@@ -644,7 +636,7 @@ namespace {
         } else if (op == "postfix_increment") {
             _ e = gen_exp(ast[0], ctx, false);
             res = convert_lvalue_to_rvalue(e, ctx);
-            if (not is_scalar_type(unqualify(res.type()))
+            if (not unqualify(res.type()).is_scalar()
                 or not is_modifiable_lvalue(res)) {
                 throw t_bad_operands();
             }
@@ -653,7 +645,7 @@ namespace {
         } else if (op == "postfix_decrement") {
             _ e = gen_exp(ast[0], ctx, false);
             res = convert_lvalue_to_rvalue(e, ctx);
-            if (not is_scalar_type(unqualify(res.type()))
+            if (not unqualify(res.type()).is_scalar()
                 or not is_modifiable_lvalue(res)) {
                 throw t_bad_operands();
             }
@@ -662,7 +654,7 @@ namespace {
         } else if (op == "prefix_increment") {
             _ e = gen_exp(ast[0], ctx, false);
             _ z = convert_lvalue_to_rvalue(e, ctx);
-            if (not is_scalar_type(unqualify(z.type()))
+            if (not unqualify(z.type()).is_scalar()
                 or not is_modifiable_lvalue(z)) {
                 throw t_bad_operands();
             }
@@ -671,7 +663,7 @@ namespace {
         } else if (op == "prefix_decrement") {
             _ e = gen_exp(ast[0], ctx, false);
             _ z = convert_lvalue_to_rvalue(e, ctx);
-            if (not is_scalar_type(unqualify(z.type()))
+            if (not unqualify(z.type()).is_scalar()
                 or not is_modifiable_lvalue(z)) {
                 throw t_bad_operands();
             }
@@ -680,22 +672,22 @@ namespace {
         } else if (op == "cast") {
             _ e = gen_exp(ast[1], ctx);
             _ t = make_type(ast[0], ctx);
-            if (not (t == void_type or (is_scalar_type(e.type())
-                                        and is_scalar_type(unqualify(t))))) {
+            if (not (t == void_type or (e.type().is_scalar()
+                                        and unqualify(t).is_scalar()))) {
                 throw t_bad_operands();
             }
             res = gen_conversion(t, e, ctx);
         } else if (op == "sizeof_type") {
             _ type = make_type(ast[0], ctx);
-            res = t_val(type.get_size());
+            res = t_val(type.size());
         } else if (op == "sizeof_exp") {
             x = silent_gen_exp(ast[0], ctx, false);
-            res = t_val(x.type().get_size());
+            res = t_val(x.type().size());
         } else {
-            throw logic_error("unhandled operator " + op);
+            throw std::logic_error("unhandled operator " + op);
         }
         if (convert_lvalue and res.is_lvalue()) {
-            if (is_array_type(res.type())) {
+            if (res.type().is_array()) {
                 res = adr(gen_array_elt(res, 0, ctx));
             } else {
                 res = convert_lvalue_to_rvalue(res, ctx);
@@ -723,32 +715,32 @@ t_val gen_is_nonzero(const t_val& x, const t_ctx& ctx) {
     return apply("xor", 1, w, ctx);
 }
 
-string gen_is_zero_i1(const t_val& x, const t_ctx& ctx) {
+str gen_is_zero_i1(const t_val& x, const t_ctx& ctx) {
     _ w = gen_is_zero(x, ctx);
     return prog.convert("trunc", ctx.asmv(w), "i1");
 }
 
-string gen_is_nonzero_i1(const t_val& x, const t_ctx& ctx) {
+str gen_is_nonzero_i1(const t_val& x, const t_ctx& ctx) {
     _ w = gen_is_nonzero(x, ctx);
     return prog.convert("trunc", ctx.asmv(w), "i1");
 }
 
-t_val gen_array_elt(const t_val& v, int i, t_ctx& ctx) {
+t_val gen_array_elt(const t_val& v, size_t i, t_ctx& ctx) {
     _ res_id = prog.member(ctx.asmv(v), i);
-    _ res_type = v.type().get_element_type();
+    _ res_type = v.type().element_type();
     return t_val(res_id, res_type, true);
 }
 
 void gen_int_promotion(t_val& x, const t_ctx& ctx) {
     if (x.type() == char_type or x.type() == s_char_type
         or x.type() == u_char_type or x.type() == short_type
-        or x.type() == u_short_type or is_enum_type(x.type())) {
+        or x.type() == u_short_type or x.type().is_enum()) {
         x = gen_conversion(int_type, x, ctx);
     }
 }
 
-t_val gen_struct_member(const t_val& v, int i, t_ctx& ctx) {
-    _ res_type = v.type().get_member_type(i);
+t_val gen_struct_member(const t_val& v, size_t i, t_ctx& ctx) {
+    _ res_type = v.type().field(i);
     _ res_id = prog.member(ctx.asmv(v), i);
     return t_val(res_id, res_type, true);
 }
@@ -757,15 +749,14 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
     if (t == void_type) {
         return t_val();
     }
-    if (not is_scalar_type(t) or not is_scalar_type(v.type())) {
+    if (not t.is_scalar() or not v.type().is_scalar()) {
         throw t_conversion_error(v.type(), t);
     }
     if (v.is_constant()) {
-        if (is_integral_type(t) and is_integral_type(v.type())) {
+        if (t.is_integral() and v.type().is_integral()) {
             return t_val(v.u_val(), t);
-        } else if (is_integral_type(t) and is_floating_type(v.type())) {
-            // test this and array size with conversions, int[1]
-            if (is_signed_type(t)) {
+        } else if (t.is_integral() and v.type().is_floating()) {
+            if (t.is_signed()) {
                 return t_val(long(v.f_val()), t);
             } else {
                 return t_val((unsigned long)(v.f_val()), t);
@@ -776,40 +767,40 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
     if (not compatible(t, v.type())) {
         _ x = ctx.asmv(v);
         _ w = ctx.asmt(t);
-        string op;
-        if (is_integral_type(t) and is_integral_type(v.type())) {
-            if (t.get_size() < v.type().get_size()) {
+        str op;
+        if (t.is_integral() and v.type().is_integral()) {
+            if (t.size() < v.type().size()) {
                 op = "trunc";
-            } else if (t.get_size() > v.type().get_size()) {
-                if (is_signed_type(v.type())) {
+            } else if (t.size() > v.type().size()) {
+                if (v.type().is_signed()) {
                     op = "sext";
                 } else {
                     op = "zext";
                 }
             }
-        } else if (is_floating_type(t) and is_floating_type(v.type())) {
-            if (t.get_size() < v.type().get_size()) {
+        } else if (t.is_floating() and v.type().is_floating()) {
+            if (t.size() < v.type().size()) {
                 op = "fptrunc";
-            } else if (t.get_size() > v.type().get_size()) {
+            } else if (t.size() > v.type().size()) {
                 op = "fpext";
             }
-        } else if (is_floating_type(t) and is_integral_type(v.type())) {
-            if (is_signed_type(v.type())) {
+        } else if (t.is_floating() and v.type().is_integral()) {
+            if (v.type().is_signed()) {
                 op = "sitofp";
             } else {
                 op = "uitofp";
             }
-        } else if (is_integral_type(t) and is_floating_type(v.type())) {
-            if (is_signed_type(t)) {
+        } else if (t.is_integral() and v.type().is_floating()) {
+            if (t.is_signed()) {
                 op = "fptosi";
             } else {
                 op = "fptoui";
             }
-        } else if (is_pointer_type(t) and is_integral_type(v.type())) {
+        } else if (t.is_pointer() and v.type().is_integral()) {
             op = "inttoptr";
-        } else if (is_pointer_type(t) and is_pointer_type(v.type())) {
+        } else if (t.is_pointer() and v.type().is_pointer()) {
             op = "bitcast";
-        } else if (is_integral_type(t) and is_pointer_type(v.type())) {
+        } else if (t.is_integral() and v.type().is_pointer()) {
             op = "ptrtoint";
         } else {
             throw t_conversion_error(v.type(), t);

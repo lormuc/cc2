@@ -13,43 +13,37 @@
 #include "exp.hpp"
 #include "ctx.hpp"
 
-using namespace std;
-
 t_prog prog;
 
 namespace {
     void gen_compound_statement(const t_ast& ast, t_ctx ctx);
     void gen_statement(const t_ast& c, t_ctx& ctx);
 
-    void err(const string& str, t_loc loc) {
+    void err(const str& str, t_loc loc) {
         throw t_compile_error(str, loc);
     }
 
     _ is_integral_constant(const t_val& x) {
-        return x.is_constant() and is_integral_type(x.type());
+        return x.is_constant() and x.type().is_integral();
     }
 
-    string make_anon_type_id() {
+    str make_anon_type_id() {
         static _ count = 0u;
-        string res;
+        str res;
         res += "#";
-        res += to_string(count);
+        res += std::to_string(count);
         count++;
         return res;
     }
 
     void gen_init(const t_val& v, const t_ast& ini, t_ctx& ctx) {
-        if (is_struct_type(v.type())) {
-            _ i = 0;
-            for (_& c : v.type().get_members()) {
+        if (v.type().is_struct()) {
+            for (size_t i = 0; i < v.type().length(); i++) {
                 gen_init(gen_struct_member(v, i, ctx), ini[i], ctx);
-                i++;
             }
-        } else if (is_array_type(v.type())) {
-            _ i = 0;
-            while (i < ini.children.size()) {
+        } else if (v.type().is_array()) {
+            for (size_t i = 0; i < v.type().length(); i++) {
                 gen_init(gen_array_elt(v, i, ctx), ini[i], ctx);
-                i++;
             }
         } else {
             gen_convert_assign(v, gen_exp(ini[0], ctx), ctx);
@@ -62,7 +56,7 @@ namespace {
             _ type = base;
             _ name = unpack_declarator(type, ast[i][0], ctx);
             type = ctx.complete_type(type);
-            if (not type.get_is_size_known()) {
+            if (not type.size()) {
                 err("type has an unknown size", ast[i].loc);
             }
             _ asm_id = prog.def_var(ctx.asmt(type));
@@ -70,7 +64,7 @@ namespace {
             ctx.def_var(name, val);
             if (ast[i].children.size() > 1) {
                 _& ini = ast[i][1];
-                if (is_scalar_type(type)) {
+                if (type.is_scalar()) {
                     t_ast exp;
                     if (ini[0].uu != "initializer") {
                         exp = ini[0];
@@ -83,7 +77,7 @@ namespace {
                     _ e = gen_exp(exp, ctx);
                     gen_convert_assign(val, e, ctx);
                 } else {
-                    if (is_struct_type(type) and ini[0].uu != "initializer") {
+                    if (type.is_struct() and ini[0].uu != "initializer") {
                         gen_assign(val, gen_exp(ini[0], ctx), ctx);
                     } else {
                         gen_init(val, ini, ctx);
@@ -123,7 +117,7 @@ namespace {
         ctx.enter_switch();
         ctx.break_label(make_label());
         _ x = gen_exp(ast[0], ctx);
-        if (not is_integral_type(x.type())) {
+        if (not x.type().is_integral()) {
             err("switch controlling exp must be integral", ast[0].loc);
         }
         gen_int_promotion(x, ctx);
@@ -151,7 +145,7 @@ namespace {
             _ cond_false = make_label();
             _ end = make_label();
             _ cond_val = gen_exp(c.children[0], ctx);
-            if (not is_scalar_type(cond_val.type())) {
+            if (not cond_val.type().is_scalar()) {
                 err("controlling expression must have scalar type",
                     c.children[0].loc);
             }
@@ -298,15 +292,15 @@ namespace {
     }
 }
 
-string make_label() {
+str make_label() {
     return prog.make_label();
 }
 
-void put_label(const std::string& s, bool f) {
+void put_label(const str& s, bool f) {
     prog.put_label(s, f);
 }
 
-string unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx) {
+str unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx) {
     _ p = &(t[0]);
     while (not (*p).children.empty()) {
         type = make_pointer_type(type);
@@ -327,7 +321,7 @@ string unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx) {
                 if (not is_integral_constant(size_val)) {
                     err("bad array size", size_exp.loc);
                 }
-                if (is_signed_type(size_val.type())
+                if (size_val.type().is_signed()
                     and size_val.s_val() <= 0) {
                     err("array size must be positive", size_exp.loc);
                 }
@@ -347,10 +341,7 @@ string unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx) {
 
 t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
     t_type res;
-    set<string> specifiers;
-    _ ts = [](_ s) {
-        return t_ast("type_specifier", s);
-    };
+    std::set<str> specifiers;
     if (ast.children.size() == 1
         and ast[0].uu == "struct_or_union_specifier") {
         _ struct_name = ast[0].vv;
@@ -363,28 +354,34 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
                 return type;
             }
         }
-        vector<t_struct_member> members;
+        vec<str> field_name;
+        vec<t_type> field_type;
         for (_& c : ast[0][0].children) {
             _ base = make_base_type(c[0], ctx);
             for (size_t i = 1; i < c.children.size(); i++) {
                 _ type = base;
                 _ name = unpack_declarator(type, c[i][0], ctx);
-                if (not type.get_is_size_known()) {
+                if (type.is_incomplete()) {
                     type = ctx.complete_type(type);
                 }
-                members.push_back({name, type});
+                if (type.is_incomplete()) {
+                    err("field has incomplete type", c[i].loc);
+                }
+                field_name.push_back(name);
+                field_type.push_back(type);
             }
         }
         if (struct_name.empty()) {
             struct_name = make_anon_type_id();
         }
-        _ type = make_struct_type(struct_name, members);
-        string id;
+        _ type = make_struct_type(struct_name, field_name,
+                                  std::move(field_type));
+        str id;
         try {
             _ data = ctx.scope_get_type_data(struct_name);
             id = data.asm_id;
-            if (not (is_struct_type(data.type)
-                     and data.type.get_members().empty())) {
+            if (not (data.type.is_struct()
+                     and data.type.fields().empty())) {
                 err("redefinition", ast.loc);
             }
         } catch (t_undefined_name_error) {
@@ -398,7 +395,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         if (ast[0].children.empty()) {
             try {
                 _ type = ctx.get_type_data(name).type;
-                if (not is_enum_type(type)) {
+                if (not type.is_enum()) {
                     err(name + " is not an enumeration", ast[0].loc);
                 }
                 return type;
@@ -416,7 +413,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         }
         _ type = make_enum_type(name);
         try {
-            ctx.def_type(name, {type});
+            ctx.def_enum(name, type);
         } catch (t_redefinition_error) {
             err("redefinition of enum " + name, ast.loc);
         }
@@ -432,7 +429,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         }
         specifiers.insert(c.vv);
     }
-    _ cmp = [&specifiers](const set<string>& x) {
+    _ cmp = [&specifiers](const std::set<str>& x) {
         return specifiers == x;
     };
     if (cmp({"char"})) {
@@ -470,7 +467,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
     err("bad type ", ast.loc);
 }
 
-string gen_asm(const t_ast& ast) {
+str gen_asm(const t_ast& ast) {
     for (_& c : ast.children) {
         gen_function(c);
     }

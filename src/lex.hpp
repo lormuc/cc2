@@ -8,9 +8,9 @@
 #include "misc.hpp"
 
 struct t_lexeme {
-    std::string uu;
-    std::string vv;
+    str uu;
+    str vv;
     t_loc loc;
 };
 
-std::list<t_lexeme> lex(const std::string&);
+std::list<t_lexeme> lex(const str&);
