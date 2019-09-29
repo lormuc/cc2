@@ -21,6 +21,7 @@ const t_type void_pointer_type(t_type_kind::_pointer, void_type);
 const t_type uintptr_t_type = u_long_type;
 const t_type size_t_type = u_long_type;
 const t_type ptrdiff_t_type = long_type;
+const t_type string_type(t_type_kind::_pointer, char_type);
 
 t_type::t_type(t_type_kind k, t_type t, size_t len)
     : ptr(new t_type_aux) {
@@ -80,15 +81,17 @@ t_type::t_type(t_type_kind kind, const str& name,
     (*ptr).children = std::move(field_types);
 }
 
-t_type::t_type(t_type_kind k, vec<t_type> p)
+t_type::t_type(t_type_kind k, t_type r, vec<t_type> p, bool v)
     : ptr(new t_type_aux) {
     assert(k == t_type_kind::_function);
     (*ptr).kind = k;
-    (*ptr).children = std::move(p);
+    (*ptr).children.push_back(r);
+    (*ptr).params = std::move(p);
+    (*ptr).is_variadic = v;
 }
 
 t_type::t_type(t_type_kind k)
-    : ptr(new t_type_aux){
+    : ptr(new t_type_aux) {
     (*ptr).kind = k;
     if (k == t_type_kind::_char or k == t_type_kind::_s_char
         or k == t_type_kind::_u_char) {
@@ -106,6 +109,20 @@ t_type::t_type(t_type_kind k)
     } else if (k == t_type_kind::_long_double) {
         set_size(8);
     }
+}
+
+t_type::t_type(t_type type, int) {
+    if (type.is_const() or type.is_volatile()) {
+        ptr.reset(new t_type_aux(*type.ptr));
+        (*ptr).is_const = false;
+        (*ptr).is_volatile = false;
+    } else {
+        ptr = type.ptr;
+    }
+}
+
+t_type unqualify(t_type t) {
+    return t_type(t, int());
 }
 
 void t_type::set_size(size_t s) {
@@ -153,12 +170,16 @@ bool t_type::operator==(t_type x) const {
     return *ptr == *x.ptr;
 }
 
+bool t_type::operator!=(t_type x) const {
+    return *ptr != *x.ptr;
+}
+
 const vec<t_type>& t_type::fields() const {
     return (*ptr).children;
 }
 
 const vec<t_type>& t_type::params() const {
-    return (*ptr).children;
+    return (*ptr).params;
 }
 
 const str& t_type::name() const {
@@ -166,11 +187,11 @@ const str& t_type::name() const {
 }
 
 bool t_type::is_const() const {
-    return (*ptr)._const;
+    return (*ptr).is_const;
 }
 
 bool t_type::is_volatile() const {
-    return (*ptr)._volatile;
+    return (*ptr).is_volatile;
 }
 
 t_type_kind t_type::kind() const {
@@ -216,12 +237,16 @@ t_type make_struct_type(const str& name) {
     return t_type(t_type_kind::_struct, name);
 }
 
-t_type make_function_type(vec<t_type> p) {
-    return t_type(t_type_kind::_function, std::move(p));
+t_type make_func_type(t_type r, vec<t_type> p, bool is_variadic) {
+    return t_type(t_type_kind::_function, r, std::move(p), is_variadic);
 }
 
 bool t_type::is_pointer() const {
     return kind() == t_type_kind::_pointer;
+}
+
+bool t_type::is_variadic() const {
+    return (*ptr).is_variadic;
 }
 
 bool t_type::is_array() const {
@@ -314,18 +339,16 @@ bool compatible(t_type x, t_type y) {
                     and (x.is_incomplete() or y.is_incomplete()
                          or x.length() == y.length()));
         } else if (x.is_function()) {
-            // _& xp = x.get_params();
-            // _& yp = y.get_params();
-            // if (not compatible(x.get_return_type(), y.get_return_type())
-            //     or xp.size() != yp.size()) {
-            //     return false;
-            // }
-            // for (_ i = 0u; i < xp.size(); i++) {
-            //     // need to unqualify and convert to pointers
-            //     if (not compatible(xp[i], yp[i])) {
-            //         return false;
-            //     }
-            // }
+            if (not (compatible(x.return_type(), y.return_type())
+                     and x.params().size() == y.params().size()
+                     and x.is_variadic() == y.is_variadic())) {
+                return false;
+            }
+            for (size_t i = 0; i < x.params().size(); i++) {
+                if (not compatible(x.params()[i], y.params()[i])) {
+                    return false;
+                }
+            }
             return true;
         } else if (x.is_struct() or x.is_enum() or x.is_union()) {
             return x.name() == y.name();
@@ -370,22 +393,21 @@ str stringify(t_type_kind k) {
 str stringify(t_type type, str name) {
     str res;
     if (type.is_function()) {
-        // res += stringify(type.return_type());
-        // res += " (";
-        // res += name;
-        // res += ")(";
-        // _& params = type.params();
-        // if (not params.empty()) {
-        //     _ initial = true;
-        //     for (_& p : params) {
-        //         if (not initial) {
-        //             res += ", ";
-        //         }
-        //         res += stringify(p);
-        //         initial = false;
-        //     }
-        // }
-        // res += ")";
+        res += stringify(type.return_type());
+        res += " (";
+        res += name;
+        res += ")(";
+        if (not type.params().empty()) {
+            _ initial = true;
+            for (_& p : type.params()) {
+                if (not initial) {
+                    res += ", ";
+                }
+                res += stringify(p);
+                initial = false;
+            }
+        }
+        res += ")";
     } else if (type.is_pointer()) {
         _ new_name = "*" + name;
         res += stringify(type.pointee_type(), new_name);
@@ -407,8 +429,4 @@ str stringify(t_type type, str name) {
         }
     }
     return res;
-}
-
-t_type unqualify(t_type t) {
-    return t;
 }

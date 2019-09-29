@@ -55,7 +55,7 @@ public:
 
 struct t_type_data {
     t_type type;
-    str asm_id;
+    str as;
 };
 
 class t_ctx {
@@ -64,7 +64,8 @@ class t_ctx {
     t_namespace<str> labels;
     str _loop_body_end;
     str _break_label;
-    str _func_name;
+    str _func_end;
+    t_val _return_var;
     vec<t_asm_case> cases;
     std::set<unsigned long> case_vals;
     int case_idx = -1;
@@ -88,10 +89,10 @@ public:
     void def_label(const str& name, const str& data) {
         labels.def(name, data);
     }
-    const t_val& get_var_data(const str& name) const {
+    const t_val& get_id_data(const str& name) const {
         return vars.get(name);
     }
-    void def_var(const str& name, const t_val& data) {
+    void def_id(const str& name, const t_val& data) {
         vars.def(name, data);
     }
     const t_type_data& get_type_data(const str& name) const {
@@ -107,28 +108,35 @@ public:
         types.put(name, data);
     }
 
-    auto loop_body_end(const str& x) {
+    _ loop_body_end(const str& x) {
         _loop_body_end = x;
     }
-    const auto& loop_body_end() {
+    const _& loop_body_end() {
         return _loop_body_end;
     }
-    auto break_label(const str& x) {
+    _ break_label(const str& x) {
         _break_label = x;
     }
-    const auto& break_label() {
+    const _& break_label() {
         return _break_label;
     }
-    auto func_name(const str& x) {
-        _func_name = x;
+    _ func_end(const str& x) {
+        _func_end = x;
     }
-    const auto& func_name() {
-        return _func_name;
+    const _& func_end() {
+        return _func_end;
+    }
+    _ return_var(const t_val& x) {
+        _return_var = x;
+    }
+    const _& return_var() {
+        return _return_var;
     }
 
     t_type complete_type(const t_type& t) const;
-    str asmt(const t_type& t, bool expand = false) const;
-    t_asm_val asmv(const t_val& val) const;
+    str as(const t_type& t, bool expand = false) const;
+    t_asm_val as(const t_val& val) const;
+    str as(const str&) const;
     void enter_scope();
 };
 

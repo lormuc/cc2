@@ -13,7 +13,7 @@ void t_ctx::enter_switch() {
 void t_ctx::def_case(const t_val& v, const str& l) {
     if (case_vals.count(v.u_val()) == 0) {
         case_vals.insert(v.u_val());
-        cases.push_back({asmv(v), l});
+        cases.push_back({as(v), l});
     } else {
         throw t_redefinition_error();
     }
@@ -25,9 +25,11 @@ str t_ctx::get_case_label() {
     return res;
 }
 
-str t_ctx::asmt(const t_type& t, bool expand) const {
+str t_ctx::as(const t_type& t, bool expand) const {
     str res;
-    if (t == char_type or t == u_char_type
+    if (t == void_type) {
+        res = "void";
+    } else if (t == char_type or t == u_char_type
         or t == s_char_type) {
         res = "i8";
     } else if (t == short_type or t == u_short_type) {
@@ -45,12 +47,12 @@ str t_ctx::asmt(const t_type& t, bool expand) const {
     } else if (t == void_pointer_type) {
         res += "i8*";
     } else if (t.is_pointer()) {
-        res += asmt(t.pointee_type());
+        res += as(t.pointee_type());
         res += "*";
     } else if (t.is_array()) {
         res += "[";
         res += std::to_string(t.length()) + " x ";
-        res += asmt(t.element_type());
+        res += as(t.element_type());
         res += "]";
     } else if (t.is_struct()) {
         if (expand) {
@@ -61,26 +63,44 @@ str t_ctx::asmt(const t_type& t, bool expand) const {
                     res += ", ";
                 }
                 start = false;
-                res += asmt(field);
+                res += as(field);
             }
             res += " }";
         } else {
-            res += get_type_data(t.name()).asm_id;
+            res += get_type_data(t.name()).as;
         }
     } else if (t.is_enum()) {
         res += "i32";
+    } else if (t.is_function()) {
+        res += as(t.return_type()) + " (";
+        _ start = true;
+        for (_& param : t.params()) {
+            if (not start) {
+                res += ", ";
+            }
+            start = false;
+            res += as(param);
+        }
+        if (t.is_variadic()) {
+            res += ", ...";
+        }
+        res += ")";
     } else {
-        throw std::logic_error("asmt " + stringify(t) + " fail");
+        throw std::logic_error("ctx.as (" + stringify(t) + ") failure");
     }
     return res;
 }
 
-t_asm_val t_ctx::asmv(const t_val& val) const {
-    _ type = asmt(val.type());
+t_asm_val t_ctx::as(const t_val& val) const {
+    _ type = as(val.type());
     if (val.is_lvalue()) {
         type += "*";
     }
-    return t_asm_val{type, val.asm_id()};
+    return t_asm_val{type, val.as()};
+}
+
+str t_ctx::as(const str& ss) const {
+    return "@" + ss;
 }
 
 t_type t_ctx::complete_type(const t_type& t) const {

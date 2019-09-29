@@ -29,6 +29,9 @@ class t_prog {
     str asm_type_defs;
     str func_body;
     str func_var_alloc;
+    str _func_name;
+    str _func_return_type;
+    vec<str> func_params;
 
     void a(const str&);
     str aa(const str&);
@@ -37,7 +40,6 @@ class t_prog {
 public:
     str def_str(const str& str);
     str make_new_id();
-    void def_main();
     void def_struct(const str& name, const str& type);
     str def_var(const str& type);
     str assemble();
@@ -54,12 +56,17 @@ public:
     str apply_rel(const str& op, const t_asm_val& x, const t_asm_val& y);
     str apply_rel(const str& op, const t_asm_val& x, const str& y);
     str inc_ptr(const t_asm_val& x, const t_asm_val& y);
-    str call_printf(const vec<t_asm_val>& args);
+    str call(const str&, const str&, const vec<t_asm_val>& args);
     str bit_not(const t_asm_val& x);
     str phi(const t_asm_val& x, const str& l0,
             const t_asm_val& y, const str& l1);
     void ret(const t_asm_val&);
+    void ret();
     void silence(bool);
     bool silence();
     void switch_(const t_asm_val&, const str&, const vec<t_asm_case>&);
+    void func_name(const str&);
+    void func_return_type(const str&);
+    str func_param(const str&);
+    void end_func();
 };

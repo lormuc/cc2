@@ -36,21 +36,26 @@ class t_type {
         size_t size = 0;
         size_t alignment = 1;
         size_t length = 0;
-        bool _const = false;
-        bool _volatile = false;
+        bool is_const = false;
+        bool is_volatile = false;
+        bool is_variadic = false;
         str name;
         vec<str> field_names;
+        vec<t_type> params;
         vec<t_type> children;
         bool operator==(const t_type_aux& x) const {
             return (kind == x.kind
                     and size == x.size
                     and alignment == x.alignment
                     and length == x.length
-                    and _const == x._const
-                    and _volatile == x._volatile
+                    and is_const == x.is_const
+                    and is_volatile == x.is_volatile
                     and name == x.name
                     and field_names == x.field_names
                     and children == x.children);
+        }
+        bool operator!=(const t_type_aux& x) const {
+            return not (*this == x);
         }
     };
     std::shared_ptr<t_type_aux> ptr;
@@ -62,8 +67,9 @@ public:
     t_type(t_type_kind, t_type);
     t_type(t_type_kind, const str&);
     t_type(t_type_kind, const str&, vec<str>, vec<t_type>);
-    t_type(t_type_kind, vec<t_type>);
+    t_type(t_type_kind, t_type, vec<t_type>, bool);
     t_type(t_type_kind);
+    t_type(t_type, int);
     bool is_const() const;
     bool is_volatile() const;
     t_type_kind kind() const;
@@ -80,6 +86,7 @@ public:
     const vec<t_type>& params() const;
     const vec<str>& field_names() const;
     bool operator==(t_type) const;
+    bool operator!=(t_type) const;
     bool is_array() const;
     bool is_function() const;
     bool is_struct() const;
@@ -99,9 +106,10 @@ public:
     bool is_complete() const;
     bool is_incomplete() const;
     bool is_pointer_to_object() const;
+    bool is_variadic() const;
 };
 
-t_type make_function_type(t_type, const vec<t_type>&);
+t_type make_func_type(t_type, vec<t_type>, bool = false);
 t_type make_basic_type(const str&);
 t_type make_pointer_type(t_type);
 t_type make_array_type(t_type);
@@ -131,3 +139,4 @@ extern const t_type void_pointer_type;
 extern const t_type uintptr_t_type;
 extern const t_type size_t_type;
 extern const t_type ptrdiff_t_type;
+extern const t_type string_type;

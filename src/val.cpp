@@ -11,21 +11,21 @@ void t_val::i_init(const t_type& t, unsigned long v) {
     _is_constant = true;
     _i_val = v;
     if (type().is_signed()) {
-        _asm_id = std::to_string(s_val());
+        _as = std::to_string(s_val());
     } else {
-        _asm_id = std::to_string(u_val());
+        _as = std::to_string(u_val());
     }
 }
 
 void t_val::f_init(const t_type& t, double v) {
-    _asm_id = std::to_string(v);
+    _as = std::to_string(v);
     _type = t;
     _is_constant = true;
     _f_val = v;
 }
 
 t_val::t_val(const str& id, const t_type& t, bool lv) {
-    _asm_id = id;
+    _as = id;
     _type = t;
     _is_lvalue = lv;
 }
@@ -35,7 +35,7 @@ t_val::t_val(void* p) {
     _type = void_pointer_type;
     _is_void_null = true;
     _is_constant = true;
-    _asm_id = "null";
+    _as = "null";
 }
 
 bool t_val::is_false() const {

@@ -22,13 +22,13 @@ namespace {
     void err(const str& str, t_loc loc) {
         throw t_compile_error(str, loc);
     }
-    bool is_modifiable_lvalue(const t_val&) {
-        return true;
+
+    bool is_modifiable_lvalue(const t_val& x) {
+        return x.is_lvalue();
     }
 
     t_val adr(const t_val& x) {
-        assert(x.is_lvalue());
-        return t_val(x.asm_id(), make_pointer_type(x.type()));
+        return t_val(x.as(), make_pointer_type(x.type()));
     }
 
     bool is_null(const t_val& x) {
@@ -38,7 +38,7 @@ namespace {
     }
 
     t_val apply(str op, const t_val& x, const t_val& y, const t_ctx& ctx) {
-        _ res_id = prog.apply(op, ctx.asmv(x), ctx.asmv(y));
+        _ res_id = prog.apply(op, ctx.as(x), ctx.as(y));
         return t_val(res_id, x.type());
     }
 
@@ -104,7 +104,7 @@ namespace {
             _ w = x.type().pointee_type();
             x = gen_conversion(uintptr_t_type, x, ctx);
             y = gen_conversion(uintptr_t_type, y, ctx);
-            _ v_id = apply("sub", x, y, ctx).asm_id();
+            _ v_id = apply("sub", x, y, ctx).as();
             _ v = t_val(v_id, ptrdiff_t_type);
             return apply("sdiv exact", v, w.size(), ctx);
         } else if (x.type().is_pointer()
@@ -112,16 +112,35 @@ namespace {
                    and y.type().is_integral()) {
             y = gen_conversion(uintptr_t_type, y, ctx);
             y = gen_neg(y, ctx);
-            _ res_id = prog.inc_ptr(ctx.asmv(x), ctx.asmv(y));
+            _ res_id = prog.inc_ptr(ctx.as(x), ctx.as(y));
             return t_val(res_id, x.type());
         } else {
             throw t_bad_operands();
         }
     }
 
-    t_val convert_lvalue_to_rvalue(const t_val& v, t_ctx& ctx) {
-        assert(v.is_lvalue());
-        return t_val(prog.load(ctx.asmv(v)), v.type());
+    t_val convert_lvalue(const t_val& v, t_ctx& ctx) {
+        if (v.is_lvalue()) {
+            return t_val(prog.load(ctx.as(v)), v.type());
+        } else {
+            return v;
+        }
+    }
+
+    t_val convert_array(const t_val& v, t_ctx& ctx) {
+        if (v.type().is_array()) {
+            return adr(gen_array_elt(v, 0, ctx));
+        } else {
+            return v;
+        }
+    }
+
+    t_val convert_function(const t_val& v, t_ctx&) {
+        if (v.type().is_function()) {
+            return adr(v);
+        } else {
+            return v;
+        }
     }
 
     t_val gen_neg(const t_val& x, const t_ctx& ctx) {
@@ -129,7 +148,7 @@ namespace {
     }
 
     t_val dereference(const t_val& v) {
-        return t_val(v.asm_id(), v.type().pointee_type(), true);
+        return t_val(v.as(), v.type().pointee_type(), true);
     }
 
     t_val gen_lt(t_val x, t_val y, const t_ctx& ctx) {
@@ -146,11 +165,11 @@ namespace {
             } else {
                 op = "icmp ult";
             }
-            _ res_id = prog.apply_rel(op, ctx.asmv(x), ctx.asmv(y));
+            _ res_id = prog.apply_rel(op, ctx.as(x), ctx.as(y));
             return t_val(res_id, int_type);
         } else if (ptrs_to_compatible(x, y)) {
             y = gen_conversion(x.type(), y, ctx);
-            _ res_id = prog.apply_rel("icmp ult", ctx.asmv(x), ctx.asmv(y));
+            _ res_id = prog.apply_rel("icmp ult", ctx.as(x), ctx.as(y));
             return t_val(res_id, int_type);
         } else {
             throw t_bad_operands();
@@ -202,7 +221,7 @@ namespace {
             } else {
                 op = "icmp eq";
             }
-            _ res_id = prog.apply_rel(op, ctx.asmv(x), ctx.asmv(y));
+            _ res_id = prog.apply_rel(op, ctx.as(x), ctx.as(y));
             return t_val(res_id, int_type);
         } else if (x.type().is_pointer() or y.type().is_pointer()) {
             if (ptrs_to_compatible(x, y)) {
@@ -216,7 +235,7 @@ namespace {
             } else {
                 throw t_bad_operands();
             }
-            _ res_id = prog.apply_rel("icmp eq", ctx.asmv(x), ctx.asmv(y));
+            _ res_id = prog.apply_rel("icmp eq", ctx.as(x), ctx.as(y));
             return t_val(res_id, int_type);
         } else {
             throw t_bad_operands();
@@ -329,7 +348,7 @@ namespace {
             return apply(op, x, y, ctx);
         } else if (x.type().is_pointer() and y.type().is_integral()) {
             y = gen_conversion(uintptr_t_type, y, ctx);
-            _ res_id = prog.inc_ptr(ctx.asmv(x), ctx.asmv(y));
+            _ res_id = prog.inc_ptr(ctx.as(x), ctx.as(y));
             return t_val(res_id, x.type());
         } else {
             throw t_bad_operands();
@@ -348,12 +367,11 @@ namespace {
         }
     }
 
-    t_val gen_exp_(const t_ast& ast, t_ctx& ctx,
-                   bool convert_lvalue) {
+    t_val gen_exp_(const t_ast& ast, t_ctx& ctx, bool convert) {
         _ assign_op = [&](_& op) {
             _ x = gen_exp(ast[0], ctx, false);
             _ y = gen_exp(ast[1], ctx);
-            _ xv = convert_lvalue_to_rvalue(x, ctx);
+            _ xv = convert_lvalue(x, ctx);
             _ z = op(xv, y, ctx);
             return gen_convert_assign(x, z, ctx);
         };
@@ -412,7 +430,17 @@ namespace {
         } else if (op == "char_constant") {
             res = t_val(int(ast.vv[0]));
         } else if (op == "identifier") {
-            res = ctx.get_var_data(ast.vv);
+            if (ast.vv == "printf") {
+                _ tp = make_func_type(int_type, {string_type}, true);
+                res = t_val(str("@printf"), tp);
+            } else if (ast.vv == "snprintf") {
+                _ tp = make_func_type(int_type,
+                                      {string_type, size_t_type, string_type},
+                                      true);
+                res = t_val(str("@snprintf"), tp);
+            } else {
+                res = ctx.get_id_data(ast.vv);
+            }
         } else if (op == "+" and arg_cnt == 1) {
             res = gen_exp(ast[0], ctx);
             if (not res.type().is_arithmetic()) {
@@ -452,7 +480,7 @@ namespace {
             if (x.is_constant()) {
                 return ~x;
             }
-            res = t_val(prog.bit_not(ctx.asmv(x)), x.type());
+            res = t_val(prog.bit_not(ctx.as(x)), x.type());
         } else if (op == "=") {
             res = gen_convert_assign(gen_exp(ast[0], ctx, false),
                                      gen_exp(ast[1], ctx),
@@ -546,7 +574,7 @@ namespace {
                 _ w = gen_is_nonzero(y, ctx);
                 put_label(l3);
                 put_label(l1);
-                _ res_id = prog.phi({"i32", "0"}, l0, ctx.asmv(w), l3);
+                _ res_id = prog.phi({"i32", "0"}, l0, ctx.as(w), l3);
                 res = t_val(res_id, int_type);
             }
         } else if (op == "||") {
@@ -574,7 +602,7 @@ namespace {
                 _ w = gen_is_nonzero(y, ctx);
                 put_label(l3);
                 put_label(l1);
-                _ res_id = prog.phi({"i32", "1"}, l0, ctx.asmv(w), l3);
+                _ res_id = prog.phi({"i32", "1"}, l0, ctx.as(w), l3);
                 res = t_val(res_id, int_type);
             }
         } else if (op == "*=") {
@@ -601,25 +629,38 @@ namespace {
             gen_exp(ast[0], ctx);
             res = gen_exp(ast[1], ctx);
         } else if (op == "function_call") {
-            if (ast[0] == t_ast("identifier", "printf")) {
-                vec<t_asm_val> args;
-                for (_ i = size_t(1); i < ast.children.size(); i++) {
-                    _ e = gen_exp(ast[i], ctx);
+            x = gen_exp(ast[0], ctx);
+            if (not (x.type().is_pointer() and
+                     x.type().pointee_type().is_function())) {
+                throw t_bad_operands();
+            }
+            _ t = x.type().pointee_type();
+            _& params = t.params();
+            _ arg_cnt = ast.children.size() - 1;
+            if (not t.is_variadic() and params.size() != arg_cnt) {
+                throw t_bad_operands();
+            }
+            vec<t_asm_val> args;
+            for (size_t i = 0; i < arg_cnt; i++) {
+                _ e = gen_exp(ast[i+1], ctx);
+                if (t.is_variadic() and i+1 >= params.size()) {
+                    gen_int_promotion(e, ctx);
                     if (e.type() == float_type) {
                         e = gen_conversion(double_type, e, ctx);
                     }
-                    args.push_back(ctx.asmv(e));
+                } else {
+                    e = gen_conversion(params[i], e, ctx);
                 }
-                res = t_val(prog.call_printf(args), int_type);
-            } else {
-                throw std::runtime_error("unknown function");
+                args.push_back(ctx.as(e));
             }
+            _ rt = (t.is_variadic() ? t : t.return_type());
+            res = t_val(prog.call(ctx.as(rt), x.as(), args), t.return_type());
         } else if (op == "struct_member") {
             x = gen_exp(ast[0], ctx, false);
-            _ field_name = ast[1].vv;
             if (not x.type().is_struct()) {
                 throw t_bad_operands();
             }
+            _ field_name = ast[1].vv;
             _ struct_name = x.type().name();
             _ type = ctx.get_type_data(struct_name).type;
             _ idx = type.field_index(field_name);
@@ -627,7 +668,7 @@ namespace {
                 throw t_bad_operands();
             }
             _ res_type = type.field(idx);
-            _ res_id = prog.member(ctx.asmv(x), idx);
+            _ res_id = prog.member(ctx.as(x), idx);
             res = t_val(res_id, res_type, x.is_lvalue());
         } else if (op == "array_subscript") {
             _ z = gen_add(gen_exp(ast[0], ctx),
@@ -635,38 +676,38 @@ namespace {
             res = dereference(z);
         } else if (op == "postfix_increment") {
             _ e = gen_exp(ast[0], ctx, false);
-            res = convert_lvalue_to_rvalue(e, ctx);
-            if (not unqualify(res.type()).is_scalar()
-                or not is_modifiable_lvalue(res)) {
+            if (not unqualify(e.type()).is_scalar()
+                or not is_modifiable_lvalue(e)) {
                 throw t_bad_operands();
             }
+            res = convert_lvalue(e, ctx);
             _ z = gen_add(res, 1, ctx);
             gen_assign(e, z, ctx);
         } else if (op == "postfix_decrement") {
             _ e = gen_exp(ast[0], ctx, false);
-            res = convert_lvalue_to_rvalue(e, ctx);
-            if (not unqualify(res.type()).is_scalar()
-                or not is_modifiable_lvalue(res)) {
+            if (not unqualify(e.type()).is_scalar()
+                or not is_modifiable_lvalue(e)) {
                 throw t_bad_operands();
             }
+            res = convert_lvalue(e, ctx);
             _ z = gen_sub(res, 1, ctx);
             gen_assign(e, z, ctx);
         } else if (op == "prefix_increment") {
             _ e = gen_exp(ast[0], ctx, false);
-            _ z = convert_lvalue_to_rvalue(e, ctx);
-            if (not unqualify(z.type()).is_scalar()
-                or not is_modifiable_lvalue(z)) {
+            if (not unqualify(e.type()).is_scalar()
+                or not is_modifiable_lvalue(e)) {
                 throw t_bad_operands();
             }
+            _ z = convert_lvalue(e, ctx);
             res = gen_add(z, 1, ctx);
             gen_assign(e, res, ctx);
         } else if (op == "prefix_decrement") {
             _ e = gen_exp(ast[0], ctx, false);
-            _ z = convert_lvalue_to_rvalue(e, ctx);
-            if (not unqualify(z.type()).is_scalar()
-                or not is_modifiable_lvalue(z)) {
+            if (not unqualify(e.type()).is_scalar()
+                or not is_modifiable_lvalue(e)) {
                 throw t_bad_operands();
             }
+            _ z = convert_lvalue(e, ctx);
             res = gen_sub(z, 1, ctx);
             gen_assign(e, res, ctx);
         } else if (op == "cast") {
@@ -686,19 +727,17 @@ namespace {
         } else {
             throw std::logic_error("unhandled operator " + op);
         }
-        if (convert_lvalue and res.is_lvalue()) {
-            if (res.type().is_array()) {
-                res = adr(gen_array_elt(res, 0, ctx));
-            } else {
-                res = convert_lvalue_to_rvalue(res, ctx);
-            }
+        if (convert) {
+            res = convert_function(res, ctx);
+            res = convert_array(res, ctx);
+            res = convert_lvalue(res, ctx);
         }
         return res;
     }
 }
 
 t_val gen_assign(const t_val& lhs, const t_val& rhs, t_ctx& ctx) {
-    prog.store(ctx.asmv(rhs), ctx.asmv(lhs));
+    prog.store(ctx.as(rhs), ctx.as(lhs));
     return lhs;
 }
 
@@ -717,16 +756,16 @@ t_val gen_is_nonzero(const t_val& x, const t_ctx& ctx) {
 
 str gen_is_zero_i1(const t_val& x, const t_ctx& ctx) {
     _ w = gen_is_zero(x, ctx);
-    return prog.convert("trunc", ctx.asmv(w), "i1");
+    return prog.convert("trunc", ctx.as(w), "i1");
 }
 
 str gen_is_nonzero_i1(const t_val& x, const t_ctx& ctx) {
     _ w = gen_is_nonzero(x, ctx);
-    return prog.convert("trunc", ctx.asmv(w), "i1");
+    return prog.convert("trunc", ctx.as(w), "i1");
 }
 
 t_val gen_array_elt(const t_val& v, size_t i, t_ctx& ctx) {
-    _ res_id = prog.member(ctx.asmv(v), i);
+    _ res_id = prog.member(ctx.as(v), i);
     _ res_type = v.type().element_type();
     return t_val(res_id, res_type, true);
 }
@@ -741,7 +780,7 @@ void gen_int_promotion(t_val& x, const t_ctx& ctx) {
 
 t_val gen_struct_member(const t_val& v, size_t i, t_ctx& ctx) {
     _ res_type = v.type().field(i);
-    _ res_id = prog.member(ctx.asmv(v), i);
+    _ res_id = prog.member(ctx.as(v), i);
     return t_val(res_id, res_type, true);
 }
 
@@ -763,10 +802,10 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
             }
         }
     }
-    _ res_id = v.asm_id();
+    _ res_id = v.as();
     if (not compatible(t, v.type())) {
-        _ x = ctx.asmv(v);
-        _ w = ctx.asmt(t);
+        _ x = ctx.as(v);
+        _ w = ctx.as(t);
         str op;
         if (t.is_integral() and v.type().is_integral()) {
             if (t.size() < v.type().size()) {
@@ -813,8 +852,9 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
 }
 
 t_val gen_exp(const t_ast& ast, t_ctx& ctx, bool convert_lvalue) {
+    t_val res;
     try {
-        return gen_exp_(ast, ctx, convert_lvalue);
+        res = gen_exp_(ast, ctx, convert_lvalue);
     } catch (t_bad_operands) {
         _ op = ast.uu;
         if (ast.vv != "") {
@@ -824,4 +864,5 @@ t_val gen_exp(const t_ast& ast, t_ctx& ctx, bool convert_lvalue) {
     } catch (const t_conversion_error& e) {
         err(e.what(), ast.loc);
     }
+    return res;
 }

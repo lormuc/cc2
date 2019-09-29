@@ -13,16 +13,14 @@
 
 const _ debug = true;
 
-using namespace std;
-
 extern const vec<str> type_specifiers = {
     "void", "char", "short", "int", "long", "float", "double",
     "signed", "unsigned"
 };
 
 namespace {
-    list<t_lexeme> lexeme_list;
-    list<t_lexeme>::iterator ll_it;
+    std::list<t_lexeme> lexeme_list;
+    std::list<t_lexeme>::iterator ll_it;
 
     t_ast exp();
     t_ast assign_exp();
@@ -35,14 +33,14 @@ namespace {
     t_ast identifier();
     t_ast abstract_declarator();
     t_ast declaration_specifiers();
-    t_ast array_size();
     t_ast pointer();
     t_ast initializer();
     t_ast un_exp();
     t_ast cond_exp();
     t_ast type_name();
+    t_ast const_exp();
 
-    _ init(const list<t_lexeme>& ll) {
+    _ init(const std::list<t_lexeme>& ll) {
         lexeme_list = ll;
         ll_it = lexeme_list.begin();
     }
@@ -287,36 +285,52 @@ namespace {
     }
     def_rule(parameter_type_list);
 
-    _ function_params_opt_() {
-        _ res = t_ast("function_params_opt", peek().loc);
+    _ abstract_subdeclarator_() {
         pop("(");
-        add_child_opt(res, parameter_type_list);
+        _ e = abstract_declarator();
         pop(")");
-        return res;
+        return e;
     }
-    def_rule(function_params_opt);
+    def_rule(abstract_subdeclarator);
 
     _ direct_abstract_declarator_() {
-        _ res = t_ast("direct_abstract_declarator", peek().loc);
+        _ res = t_ast();
+        _ empty = true;
         try {
-            pop("(");
-            res.add_child(abstract_declarator());
-            pop(")");
+            res = abstract_subdeclarator();
+            empty = false;
         } catch (t_parse_error) {
-            res.add_child(t_ast("identifier", "", peek().loc));
+            res = t_ast("identifier", "", peek().loc);
         }
         while (true) {
-            try {
-                res.add_child(array_size());
-            } catch (t_parse_error) {
-                try {
-                    res.add_child(function_params_opt());
-                } catch (t_parse_error) {
-                    break;
+            _ loc = peek().loc;
+            if (cmp("[")) {
+                advance();
+                res = t_ast("array", {res});
+                if (cmp("]")) {
+                    advance();
+                } else {
+                    res.add_child(const_exp());
+                    pop("]");
                 }
+                empty = false;
+            } else if (cmp("(")) {
+                advance();
+                res = t_ast("function", {res});
+                if (cmp(")")) {
+                    advance();
+                } else {
+                    res.add_child(parameter_type_list());
+                    pop(")");
+                }
+                empty = false;
+            } else {
+                break;
             }
+            res.loc = loc;
+
         }
-        if (res.children.empty()) {
+        if (empty) {
             throw t_parse_error(res.loc);
         }
         return res;
@@ -324,13 +338,18 @@ namespace {
     def_rule(direct_abstract_declarator);
 
     _ abstract_declarator_() {
-        _ res = t_ast("abstract_declarator", peek().loc);
-        res.add_child(opt(pointer));
-        res.add_child(opt(direct_abstract_declarator));
-        if (peek().loc == res.loc) {
-            throw t_parse_error(res.loc);
+        if (cmp("*")) {
+            _ res = t_ast("pointer", peek().loc);
+            advance();
+            try {
+                res.add_child(abstract_declarator());
+            } catch (t_parse_error) {
+                res.add_child(t_ast("identifier", "", peek().loc));
+            }
+            return res;
+        } else {
+            return direct_abstract_declarator();
         }
-        return res;
     }
     def_rule(abstract_declarator);
 
@@ -359,7 +378,7 @@ namespace {
     def_rule(cast_exp);
 
     _ left_assoc_bin_op(const vec<str>& ops,
-                        function<t_ast()> subexp) {
+                        std::function<t_ast()> subexp) {
         _ res = subexp();
         while (true) {
             _ op = peek().uu;
@@ -612,32 +631,6 @@ namespace {
     }
     def_rule(identifier);
 
-    _ array_size_() {
-        _ res = t_ast("array_size", peek().loc);
-        pop("[");
-        add_child_opt(res, const_exp);
-        pop("]");
-        return res;
-    }
-    def_rule(array_size);
-
-    _ func_ids_() {
-        _ res = t_ast("func_ids", peek().loc);
-        pop("(");
-        if (not cmp(")")) {
-            while (true) {
-                res.add_child(identifier());
-                if (not cmp(",")) {
-                    break;
-                }
-                advance();
-            }
-        }
-        pop(")");
-        return res;
-    }
-    def_rule(func_ids);
-
     _ subdeclarator_() {
         pop("(");
         _ e = declarator();
@@ -647,27 +640,46 @@ namespace {
     def_rule(subdeclarator);
 
     _ direct_declarator_() {
-        _ res = t_ast("direct_declarator", peek().loc);
-        res.add_child(or_(subdeclarator,
-                          identifier));
+        _ res = or_(subdeclarator,
+                    identifier);
         while (true) {
-            try {
-                res.add_child(or_(function_params_opt,
-                                  func_ids,
-                                  array_size));
-            } catch (t_parse_error) {
+            _ loc = peek().loc;
+            if (cmp("[")) {
+                advance();
+                res = t_ast("array", {res});
+                if (cmp("]")) {
+                    advance();
+                } else {
+                    res.add_child(const_exp());
+                    pop("]");
+                }
+            } else if (cmp("(")) {
+                advance();
+                res = t_ast("function", {res});
+                if (cmp(")")) {
+                    advance();
+                } else {
+                    res.add_child(parameter_type_list());
+                    pop(")");
+                }
+            } else {
                 break;
             }
+            res.loc = loc;
         }
         return res;
     }
     def_rule(direct_declarator);
 
-    t_ast declarator_() {
-        _ res = t_ast("declarator", peek().loc);
-        res.add_child(opt(pointer));
-        res.add_child(direct_declarator());
-        return res;
+    _ declarator_() {
+        if (cmp("*")) {
+            _ res = t_ast("pointer", peek().loc);
+            advance();
+            res.add_child(declarator());
+            return res;
+        } else {
+            return direct_declarator();
+        }
     }
     def_rule(declarator);
 
@@ -886,20 +898,16 @@ namespace {
     def_rule(block_item);
 
     _ function_definition_() {
-        _ loc = peek().loc;
-        pop("int");
-        _ func_name = pop("identifier");
-        pop("(");
-        pop(")");
-        _ children = compound_statement().children;
-        _ res = t_ast("function", func_name, children);
-        res.loc = loc;
+        _ res = t_ast("function_definition", peek().loc);
+        res.add_child(declaration_specifiers());
+        res.add_child(declarator());
+        res.add_child(compound_statement());
         return res;
     }
     def_rule(function_definition);
 }
 
-t_ast parse_program(const list<t_lexeme>& n_ll) {
+t_ast parse_program(const std::list<t_lexeme>& n_ll) {
     init(n_ll);
     _ res = t_ast("program", peek().loc);
     while (not end()) {

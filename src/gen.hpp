@@ -18,7 +18,7 @@ str make_label();
 void put_label(const str& l, bool f = true);
 str func_line(const str&);
 t_type make_base_type(const t_ast& t, t_ctx& ctx);
-str unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx);
+str unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx, bool = false);
 str gen_asm(const t_ast&);
 
 extern t_prog prog;

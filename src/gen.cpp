@@ -59,9 +59,8 @@ namespace {
             if (not type.size()) {
                 err("type has an unknown size", ast[i].loc);
             }
-            _ asm_id = prog.def_var(ctx.asmt(type));
-            _ val = t_val(asm_id, type, true);
-            ctx.def_var(name, val);
+            _ val = t_val(prog.def_var(ctx.as(type)), type, true);
+            ctx.def_id(name, val);
             if (ast[i].children.size() > 1) {
                 _& ini = ast[i][1];
                 if (type.is_scalar()) {
@@ -126,8 +125,69 @@ namespace {
         if (default_label == "") {
             default_label = ctx.break_label();
         }
-        prog.switch_(ctx.asmv(x), default_label, ctx.get_asm_cases());
+        prog.switch_(ctx.as(x), default_label, ctx.get_asm_cases());
         gen_statement(ast[1], ctx);
+        put_label(ctx.break_label());
+    }
+
+    void gen_while(const t_ast& ast, t_ctx ctx) {
+        ctx.enter_scope();
+        ctx.break_label(make_label());
+        ctx.loop_body_end(make_label());
+        _ loop_begin = make_label();
+        _ loop_body = make_label();
+        put_label(loop_begin);
+        _ cond_val = gen_exp(ast[0], ctx);
+        prog.cond_br(gen_is_zero_i1(cond_val, ctx),
+                     ctx.break_label(), loop_body);
+        put_label(loop_body);
+        gen_statement(ast[1], ctx);
+        put_label(ctx.loop_body_end());
+        prog.br(loop_begin);
+        put_label(ctx.break_label());
+    }
+
+    void gen_do_while(const t_ast& ast, t_ctx ctx) {
+        ctx.enter_scope();
+        ctx.break_label(make_label());
+        ctx.loop_body_end(make_label());
+        _ loop_begin = make_label();
+        put_label(loop_begin);
+        gen_statement(ast[0], ctx);
+        put_label(ctx.loop_body_end());
+        _ cond_val = gen_exp(ast[1], ctx);
+        prog.cond_br(gen_is_zero_i1(cond_val, ctx),
+                     ctx.break_label(), loop_begin);
+        put_label(ctx.break_label());
+    }
+
+    void gen_for(const t_ast& ast, t_ctx ctx) {
+        ctx.enter_scope();
+        _ loop_begin = make_label();
+        _ loop_body = make_label();
+        ctx.break_label(make_label());
+        ctx.loop_body_end(make_label());
+        _ init_exp = ast[0];
+        if (not init_exp.children.empty()) {
+            gen_exp(init_exp[0], ctx);
+        }
+        put_label(loop_begin);
+        _& ctrl_exp = ast[1];
+        if (not ctrl_exp.children.empty()) {
+            _ cond_val = gen_exp(ctrl_exp[0], ctx);
+            prog.cond_br(gen_is_zero_i1(cond_val, ctx),
+                         ctx.break_label(), loop_body);
+            put_label(loop_body, false);
+        } else {
+            put_label(loop_body);
+        }
+        gen_statement(ast[3], ctx);
+        put_label(ctx.loop_body_end());
+        _& post_exp = ast[2];
+        if (not post_exp.children.empty()) {
+            gen_exp(post_exp[0], ctx);
+        }
+        prog.br(loop_begin);
         put_label(ctx.break_label());
     }
 
@@ -168,64 +228,16 @@ namespace {
             }
         } else if (c.uu == "return") {
             _ val = gen_exp(c.children[0], ctx);
-            prog.ret(ctx.asmv(val));
+            gen_convert_assign(ctx.return_var(), val, ctx);
+            prog.br(ctx.func_end());
         } else if (c.uu == "compound_statement") {
             gen_compound_statement(c, ctx);
         } else if (c.uu == "while") {
-            _ nctx = ctx;
-            nctx.break_label(make_label());
-            nctx.loop_body_end(make_label());
-            _ loop_begin = make_label();
-            _ loop_body = make_label();
-            put_label(loop_begin);
-            _ cond_val = gen_exp(c.children[0], nctx);
-            prog.cond_br(gen_is_zero_i1(cond_val, ctx),
-                         nctx.break_label(), loop_body);
-            put_label(loop_body);
-            gen_statement(c.children[1], nctx);
-            put_label(nctx.loop_body_end());
-            prog.br(loop_begin);
-            put_label(nctx.break_label());
+            gen_while(c, ctx);
         } else if (c.uu == "do_while") {
-            _ nctx = ctx;
-            nctx.break_label(make_label());
-            nctx.loop_body_end(make_label());
-            _ loop_begin = make_label();
-            put_label(loop_begin);
-            gen_statement(c.children[0], nctx);
-            put_label(nctx.loop_body_end());
-            _ cond_val = gen_exp(c.children[1], nctx);
-            prog.cond_br(gen_is_zero_i1(cond_val, ctx),
-                         nctx.break_label(), loop_begin);
-            put_label(nctx.break_label());
+            gen_do_while(c, ctx);
         } else if (c.uu == "for") {
-            _ loop_begin = make_label();
-            _ loop_body = make_label();
-            _ nctx = ctx;
-            nctx.break_label(make_label());
-            nctx.loop_body_end(make_label());
-            _ init_exp = c[0];
-            if (not init_exp.children.empty()) {
-                gen_exp(init_exp[0], nctx);
-            }
-            put_label(loop_begin);
-            _& ctrl_exp = c[1];
-            if (not ctrl_exp.children.empty()) {
-                _ cond_val = gen_exp(ctrl_exp[0], nctx);
-                prog.cond_br(gen_is_zero_i1(cond_val, ctx),
-                             nctx.break_label(), loop_body);
-                put_label(loop_body, false);
-            } else {
-                put_label(loop_body);
-            }
-            gen_statement(c[3], nctx);
-            put_label(nctx.loop_body_end());
-            _& post_exp = c[2];
-            if (not post_exp.children.empty()) {
-                gen_exp(post_exp[0], nctx);
-            }
-            prog.br(loop_begin);
-            put_label(nctx.break_label());
+            gen_for(c, ctx);
         } else if (c.uu == "break") {
             if (ctx.break_label() == "") {
                 err("break not in loop or switch", c.loc);
@@ -278,17 +290,39 @@ namespace {
         }
     }
 
-    _ gen_function(const t_ast& ast) {
-        _& func_name = ast.vv;
-        assert(func_name == "main");
-        t_ctx ctx;
-        ctx.func_name(func_name);
-        def_labels(ast, ctx);
-        for (_& c : ast.children) {
+    _ gen_function(const t_ast& ast, t_ctx& octx) {
+        _ type = make_base_type(ast[0], octx);
+        _ ctx = octx;
+        ctx.enter_scope();
+        _ func_name = unpack_declarator(type, ast[1], ctx, true);
+        type = ctx.complete_type(type);
+        _ ret_tp = type.return_type();
+
+        _ as_name = ctx.as(func_name);
+        prog.func_name(as_name);
+        prog.func_return_type(ctx.as(ret_tp));
+        octx.def_id(func_name, t_val(as_name, type));
+
+        ctx.func_end(make_label());
+        if (ret_tp != void_type) {
+            ctx.return_var(t_val(prog.def_var(ctx.as(ret_tp)), ret_tp, true));
+        }
+        if (func_name == "main") {
+            gen_assign(ctx.return_var(), t_val(0), ctx);
+        }
+
+        def_labels(ast[2], ctx);
+        for (_& c : ast[2].children) {
             gen_block_item(c, ctx);
         }
-        prog.ret({"i32", "0"});
-        prog.def_main();
+        put_label(ctx.func_end());
+        if (ret_tp == void_type) {
+            prog.ret();
+        } else {
+            _ ret_as = prog.load(ctx.as(ctx.return_var()));
+            prog.ret({ctx.as(ret_tp), ret_as});
+        }
+        prog.end_func();
     }
 }
 
@@ -300,42 +334,55 @@ void put_label(const str& s, bool f) {
     prog.put_label(s, f);
 }
 
-str unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx) {
-    _ p = &(t[0]);
-    while (not (*p).children.empty()) {
+str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
+                      bool is_func_def) {
+    _& kind = ast.uu;
+    if (kind == "pointer") {
         type = make_pointer_type(type);
-        p = &((*p)[0]);
-    }
-    if (t[1].uu == "opt" and t[1].children.empty()) {
-        return "";
-    }
-    _& dd = (t[1].uu == "opt") ? t[1][0] : t[1];
-    assert(dd.children.size() >= 1);
-    _ i = dd.children.size() - 1;
-    while (i != 0) {
-        _& op = dd[i].uu;
-        if (op == "array_size") {
-            if (dd[i].children.size() != 0) {
-                _& size_exp = dd[i][0];
-                _ size_val = gen_exp(size_exp, ctx);
-                if (not is_integral_constant(size_val)) {
-                    err("bad array size", size_exp.loc);
-                }
-                if (size_val.type().is_signed()
-                    and size_val.s_val() <= 0) {
-                    err("array size must be positive", size_exp.loc);
-                }
-                type = make_array_type(type, size_val.u_val());
-            } else {
-                type = make_array_type(type);
+        return unpack_declarator(type, ast[0], ctx, is_func_def);
+    } else if (kind == "array") {
+        if (ast.children.size() == 2) {
+            _& size_exp = ast[1];
+            _ size_val = gen_exp(size_exp, ctx);
+            if (not is_integral_constant(size_val)) {
+                err("array size is not an integral constant", size_exp.loc);
             }
+            if (size_val.type().is_signed() and size_val.s_val() <= 0) {
+                err("array size must be positive", size_exp.loc);
+            }
+            type = make_array_type(type, size_val.u_val());
+        } else {
+            type = make_array_type(type);
         }
-        i--;
-    }
-    if (dd[0].uu == "identifier") {
-        return dd[0].vv;
+        return unpack_declarator(type, ast[0], ctx, is_func_def);
+    } else if (kind == "function") {
+        if (ast.children.size() == 2) {
+            _ pctx = ctx;
+            pctx.enter_scope();
+            _ is_variadic = false;
+            vec<t_type> params;
+            for (_& p : ast[1].children) {
+                if (p.uu == "...") {
+                    is_variadic = true;
+                } else {
+                    _ param_type = make_base_type(p[0], pctx);
+                    _ param_name = unpack_declarator(param_type, p[1], pctx);
+                    if (is_func_def and ast[0].uu == "identifier") {
+                        _ p_as = prog.func_param(ctx.as(param_type));
+                        ctx.def_id(param_name, t_val(p_as, param_type, true));
+                    }
+                    params.push_back(param_type);
+                }
+            }
+            type = make_func_type(type, params, is_variadic);
+        } else {
+            type = make_func_type(type, {});
+        }
+        return unpack_declarator(type, ast[0], ctx, is_func_def);
+    } else if (kind == "identifier") {
+        return ast.vv;
     } else {
-        return unpack_declarator(type, dd[0], ctx);
+        throw std::logic_error(str(__func__) + " bad kind");
     }
 }
 
@@ -379,7 +426,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         str id;
         try {
             _ data = ctx.scope_get_type_data(struct_name);
-            id = data.asm_id;
+            id = data.as;
             if (not (data.type.is_struct()
                      and data.type.fields().empty())) {
                 err("redefinition", ast.loc);
@@ -388,7 +435,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
             id = prog.make_new_id();
         }
         ctx.put_struct(struct_name, {type, id});
-        prog.def_struct(id, ctx.asmt(type, true));
+        prog.def_struct(id, ctx.as(type, true));
         return type;
     } else if (ast.children.size() == 1 and ast[0].uu == "enum") {
         _ name = (ast[0].vv == "") ? make_anon_type_id() : ast[0].vv;
@@ -406,9 +453,9 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         _ cnt = 0;
         for (_& e : ast[0].children) {
             if (e.children.size() == 1) {
-                cnt = stoi(gen_exp(e[0], ctx).asm_id());
+                cnt = stoi(gen_exp(e[0], ctx).as());
             }
-            ctx.def_var(e.vv, cnt);
+            ctx.def_id(e.vv, cnt);
             cnt++;
         }
         _ type = make_enum_type(name);
@@ -433,43 +480,46 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         return specifiers == x;
     };
     if (cmp({"char"})) {
-        return char_type;
+        res = char_type;
     } else if (cmp({"signed", "char"})) {
-        return s_char_type;
+        res = s_char_type;
     } else if (cmp({"unsigned", "char"})) {
-        return u_char_type;
+        res = u_char_type;
     } else if (cmp({"short"}) or cmp({"signed", "short"})
                or cmp({"short", "int"})
                or cmp({"signed", "short", "int"})) {
-        return short_type;
+        res = short_type;
     } else if (cmp({"unsigned", "short"})
                or cmp({"unsigned", "short", "int"})) {
-        return u_short_type;
+        res = u_short_type;
     } else if (cmp({"int"}) or cmp({"signed"}) or cmp({"signed", "int"})) {
-        return int_type;
+        res = int_type;
     } else if (cmp({"unsigned"}) or cmp({"unsigned", "int"})) {
-        return u_int_type;
+        res = u_int_type;
     } else if (cmp({"long"}) or cmp({"signed", "long"})
                or cmp({"long", "int"}) or cmp({"signed", "long", "int"})) {
-        return long_type;
+        res = long_type;
     } else if (cmp({"unsigned", "long"})
                or cmp({"unsigned", "long", "int"})) {
-        return u_long_type;
+        res = u_long_type;
     } else if (cmp({"float"})) {
-        return float_type;
+        res = float_type;
     } else if (cmp({"double"})) {
-        return double_type;
+        res = double_type;
     } else if (cmp({"long", "double"})) {
-        return long_double_type;
+        res = long_double_type;
     } else if (cmp({"void"})) {
-        return void_type;
+        res = void_type;
+    } else {
+        err("bad type ", ast.loc);
     }
-    err("bad type ", ast.loc);
+    return res;
 }
 
 str gen_asm(const t_ast& ast) {
+    t_ctx ctx;
     for (_& c : ast.children) {
-        gen_function(c);
+        gen_function(c, ctx);
     }
     return prog.assemble();
 }

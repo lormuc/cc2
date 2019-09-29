@@ -67,15 +67,6 @@ str t_prog::def_str(const str& str) {
     return name;
 }
 
-void t_prog::def_main() {
-    append(asm_funcs, "define i32 @");
-    append(asm_funcs, "main");
-    append(asm_funcs, "() {\n");
-    append(asm_funcs, func_var_alloc);
-    append(asm_funcs, func_body);
-    append(asm_funcs, "}\n");
-}
-
 void t_prog::def_struct(const str& name, const str& type) {
     append(asm_type_defs, name + " = type " + type + "\n");
 }
@@ -88,7 +79,8 @@ str t_prog::assemble() {
     res += "\n";
     res += asm_funcs;
     res += "\n";
-    res += "declare i32 @printf(i8* nocapture readonly, ...)\n";
+    res += "declare i32 @printf(i8*, ...)\n";
+    res += "declare i32 @snprintf(i8*, i64, i8*, ...)\n";
     return res;
 }
 
@@ -142,7 +134,8 @@ str t_prog::inc_ptr(const t_asm_val& x, const t_asm_val& y) {
               + ", " + y.join());
 }
 
-str t_prog::call_printf(const vec<t_asm_val>& args) {
+str t_prog::call(const str& ret_type, const str& name,
+                 const vec<t_asm_val>& args) {
     str args_str;
     for (_& arg : args) {
         if (args_str.empty()) {
@@ -151,7 +144,7 @@ str t_prog::call_printf(const vec<t_asm_val>& args) {
             args_str += ", " + arg.join();
         }
     }
-    return aa("call i32 (i8*, ...) @printf(" + args_str + ")");
+    return aa("call " + ret_type + " " + name + "(" + args_str + ")");
 }
 
 str t_prog::bit_not(const t_asm_val& x) {
@@ -166,6 +159,10 @@ str t_prog::phi(const t_asm_val& x, const str& l0,
 
 void t_prog::ret(const t_asm_val& x) {
     a("ret " + x.join());
+}
+
+void t_prog::ret() {
+    a("ret void");
 }
 
 void t_prog::silence(bool x) {
@@ -187,4 +184,38 @@ void t_prog::switch_(const t_asm_val& x, const str& default_label,
     }
     a("switch " + x.join() + ", label " + default_label
       + " [" + str + "]");
+}
+
+void t_prog::func_name(const str& x) {
+    _func_name = x;
+}
+
+void t_prog::func_return_type(const str& x) {
+    _func_return_type = x;
+}
+
+str t_prog::func_param(const str& t) {
+    _ as = def_var(t);
+    _ param_idx = "%" + std::to_string(func_params.size());
+    store({t, param_idx}, {t + "*", as});
+    func_params.push_back(t);
+    return as;
+}
+
+void t_prog::end_func() {
+    append(asm_funcs, "define " + _func_return_type + " " + _func_name);
+    str params;
+    for (_& p : func_params) {
+        if (params != "") {
+            params += ", ";
+        }
+        params += p;
+    }
+    append(asm_funcs, "(" + params + ") {\n");
+    append(asm_funcs, func_var_alloc);
+    append(asm_funcs, func_body);
+    append(asm_funcs, "}\n\n");
+    func_params.clear();
+    func_body = "";
+    func_var_alloc = "";
 }

@@ -5,7 +5,7 @@
 #include "type.hpp"
 
 class t_val {
-    str _asm_id;
+    str _as;
     t_type _type;
     bool _is_lvalue = false;
     bool _is_constant = false;
@@ -37,7 +37,7 @@ public:
     t_val(float x) { f_init(float_type, x); }
     t_val(double x) { f_init(double_type, x); }
     t_val(long double x) { f_init(long_double_type, x); }
-    str asm_id() const { return _asm_id; }
+    str as() const { return _as; }
     const t_type& type() const { return _type; }
     bool is_lvalue() const { return _is_lvalue; }
     bool is_constant() const { return _is_constant; }
