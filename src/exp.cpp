@@ -449,7 +449,7 @@ namespace {
             gen_int_promotion(res, ctx);
         } else if (op == "&" and arg_cnt == 1) {
             _ w = gen_exp(ast[0], ctx, false);
-            if (not w.is_lvalue()) {
+            if (not (w.is_lvalue() or w.type().is_function())) {
                 throw t_bad_operands();
             }
             res = adr(w);
