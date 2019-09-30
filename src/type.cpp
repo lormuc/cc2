@@ -47,18 +47,14 @@ t_type::t_type(t_type_kind k, t_type t)
 
 t_type::t_type(t_type_kind k, const str& n)
     : ptr(new t_type_aux) {
-    assert(k == t_type_kind::_struct or k == t_type_kind::_enum);
+    assert(k == t_type_kind::_enum);
     (*ptr).kind = k;
-    if (k == t_type_kind::_struct) {
-        (*ptr).name = n;
-    } else if (k == t_type_kind::_enum) {
-        set_size(4);
-        (*ptr).name = n;
-    }
+    set_size(4);
+    (*ptr).name = n;
 }
 
 t_type::t_type(t_type_kind kind, const str& name,
-               vec<str> field_names, vec<t_type> field_types)
+               vec<str> field_names, vec<t_type> field_types, const str& as)
     : ptr(new t_type_aux) {
     assert(kind == t_type_kind::_struct);
     _ len = field_types.size();
@@ -79,6 +75,7 @@ t_type::t_type(t_type_kind kind, const str& name,
     (*ptr).name = name;
     (*ptr).field_names = std::move(field_names);
     (*ptr).children = std::move(field_types);
+    (*ptr).as = as;
 }
 
 t_type::t_type(t_type_kind k, t_type r, vec<t_type> p, bool v)
@@ -224,17 +221,17 @@ t_type make_array_type(t_type t, size_t l) {
 }
 
 t_type make_struct_type(const str& name, vec<str> field_names,
-                        vec<t_type> field_types) {
+                        vec<t_type> field_types, const str& _as) {
     return t_type(t_type_kind::_struct, name, std::move(field_names),
-                  std::move(field_types));
+                  std::move(field_types), _as);
+}
+
+t_type make_struct_type(const str& name, const str& _as) {
+    return t_type(t_type_kind::_struct, name, {}, {}, _as);
 }
 
 t_type make_enum_type(const str& name) {
     return t_type(t_type_kind::_enum, name);
-}
-
-t_type make_struct_type(const str& name) {
-    return t_type(t_type_kind::_struct, name);
 }
 
 t_type make_func_type(t_type r, vec<t_type> p, bool is_variadic) {
@@ -326,6 +323,73 @@ bool t_type::is_incomplete() const {
 
 bool t_type::is_pointer_to_object() const {
     return is_pointer() and pointee_type().is_object();
+}
+
+str t_type::as(bool expand) const {
+    _& t = *this;
+    str res;
+    if (t == void_type) {
+        res = "void";
+    } else if (t == char_type or t == u_char_type
+        or t == s_char_type) {
+        res = "i8";
+    } else if (t == short_type or t == u_short_type) {
+        res = "i16";
+    } else if (t == int_type or t == u_int_type) {
+        res = "i32";
+    } else if (t == long_type or t == u_long_type) {
+        res = "i64";
+    } else if (t == float_type) {
+        res = "float";
+    } else if (t == double_type) {
+        res = "double";
+    } else if (t == long_double_type) {
+        res = "double";
+    } else if (t == void_pointer_type) {
+        res += "i8*";
+    } else if (t.is_pointer()) {
+        res += t.pointee_type().as();
+        res += "*";
+    } else if (t.is_array()) {
+        res += "[";
+        res += std::to_string(t.length()) + " x ";
+        res += t.element_type().as();
+        res += "]";
+    } else if (t.is_struct()) {
+        if (expand) {
+            res += "{ ";
+            _ start = true;
+            for (_& field : t.fields()) {
+                if (not start) {
+                    res += ", ";
+                }
+                start = false;
+                res += field.as();
+            }
+            res += " }";
+        } else {
+            res += (*ptr).as;
+        }
+    } else if (t.is_enum()) {
+        res += "i32";
+    } else if (t.is_function()) {
+        res += t.return_type().as() + " (";
+        _ start = true;
+        for (_& param : t.params()) {
+            if (not start) {
+                res += ", ";
+            }
+            start = false;
+            res += param.as();
+        }
+        if (t.is_variadic()) {
+            res += ", ...";
+        }
+        res += ")";
+    } else {
+        throw std::logic_error("type.as (" + stringify(t) + ") failure");
+    }
+    return res;
 }
 
 bool compatible(t_type x, t_type y) {

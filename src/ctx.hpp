@@ -23,6 +23,9 @@ public:
             throw t_undefined_name_error();
         }
     }
+    const std::unordered_map<str, t>& scope_get() const {
+        return scope;
+    }
     const t& get(const str& name) const {
         try {
             return scope_get(name);
@@ -89,8 +92,10 @@ public:
     void def_label(const str& name, const str& data) {
         labels.def(name, data);
     }
-    const t_val& get_id_data(const str& name) const {
-        return vars.get(name);
+    t_val get_id_data(const str& name) const {
+        _ x = vars.get(name);
+        x.set_type(complete_type(x.type()));
+        return x;
     }
     void def_id(const str& name, const t_val& data) {
         vars.def(name, data);
@@ -134,9 +139,9 @@ public:
     }
 
     t_type complete_type(const t_type& t) const;
-    str as(const t_type& t, bool expand = false) const;
     t_asm_val as(const t_val& val) const;
     str as(const str&) const;
     void enter_scope();
+    ~t_ctx();
 };
 

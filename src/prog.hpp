@@ -41,6 +41,7 @@ public:
     str def_str(const str& str);
     str make_new_id();
     void def_struct(const str& name, const str& type);
+    void def_opaque_struct(const str& name);
     str def_var(const str& type);
     str assemble();
     void put_label(const str&, bool = true);
@@ -57,6 +58,7 @@ public:
     str apply_rel(const str& op, const t_asm_val& x, const str& y);
     str inc_ptr(const t_asm_val& x, const t_asm_val& y);
     str call(const str&, const str&, const vec<t_asm_val>& args);
+    void call_void(const str& name, const vec<t_asm_val>& args);
     str bit_not(const t_asm_val& x);
     str phi(const t_asm_val& x, const str& l0,
             const t_asm_val& y, const str& l1);

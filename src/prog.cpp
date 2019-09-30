@@ -71,6 +71,10 @@ void t_prog::def_struct(const str& name, const str& type) {
     append(asm_type_defs, name + " = type " + type + "\n");
 }
 
+void t_prog::def_opaque_struct(const str& name) {
+    append(asm_type_defs, name + " = type opaque\n");
+}
+
 str t_prog::assemble() {
     str res;
     res += asm_type_defs;
@@ -145,6 +149,18 @@ str t_prog::call(const str& ret_type, const str& name,
         }
     }
     return aa("call " + ret_type + " " + name + "(" + args_str + ")");
+}
+
+void t_prog::call_void(const str& name, const vec<t_asm_val>& args) {
+    str args_str;
+    for (_& arg : args) {
+        if (args_str.empty()) {
+            args_str += arg.join();
+        } else {
+            args_str += ", " + arg.join();
+        }
+    }
+    a("call void " + name + "(" + args_str + ")");
 }
 
 str t_prog::bit_not(const t_asm_val& x) {

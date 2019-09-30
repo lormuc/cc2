@@ -51,6 +51,18 @@ namespace {
     }
 
     void gen_declaration(const t_ast& ast, t_ctx& ctx) {
+        if (ast.children.size() == 1 and ast[0].children.size() == 1
+            and ast[0][0].uu == "struct_or_union_specifier"
+            and ast[0][0].children.empty()) {
+            _& struct_name = ast[0][0].vv;
+            try {
+                ctx.scope_get_type_data(struct_name).type;
+            } catch (t_undefined_name_error) {
+                _ type = make_struct_type(struct_name, prog.make_new_id());
+                ctx.put_struct(struct_name, {type, type.as()});
+            }
+            return;
+        }
         _ base = make_base_type(ast[0], ctx);
         for (size_t i = 1; i < ast.children.size(); i++) {
             _ type = base;
@@ -59,7 +71,7 @@ namespace {
             if (not type.size()) {
                 err("type has an unknown size", ast[i].loc);
             }
-            _ val = t_val(prog.def_var(ctx.as(type)), type, true);
+            _ val = t_val(prog.def_var(type.as()), type, true);
             ctx.def_id(name, val);
             if (ast[i].children.size() > 1) {
                 _& ini = ast[i][1];
@@ -300,12 +312,12 @@ namespace {
 
         _ as_name = ctx.as(func_name);
         prog.func_name(as_name);
-        prog.func_return_type(ctx.as(ret_tp));
+        prog.func_return_type(ret_tp.as());
         octx.def_id(func_name, t_val(as_name, type));
 
         ctx.func_end(make_label());
         if (ret_tp != void_type) {
-            ctx.return_var(t_val(prog.def_var(ctx.as(ret_tp)), ret_tp, true));
+            ctx.return_var(t_val(prog.def_var(ret_tp.as()), ret_tp, true));
         }
         if (func_name == "main") {
             gen_assign(ctx.return_var(), t_val(0), ctx);
@@ -320,7 +332,7 @@ namespace {
             prog.ret();
         } else {
             _ ret_as = prog.load(ctx.as(ctx.return_var()));
-            prog.ret({ctx.as(ret_tp), ret_as});
+            prog.ret({ret_tp.as(), ret_as});
         }
         prog.end_func();
     }
@@ -357,18 +369,17 @@ str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
         return unpack_declarator(type, ast[0], ctx, is_func_def);
     } else if (kind == "function") {
         if (ast.children.size() == 2) {
-            _ pctx = ctx;
-            pctx.enter_scope();
             _ is_variadic = false;
             vec<t_type> params;
             for (_& p : ast[1].children) {
                 if (p.uu == "...") {
                     is_variadic = true;
                 } else {
-                    _ param_type = make_base_type(p[0], pctx);
-                    _ param_name = unpack_declarator(param_type, p[1], pctx);
+                    _ param_type = make_base_type(p[0], ctx);
+                    _ param_name = unpack_declarator(param_type, p[1], ctx);
+                    param_type = ctx.complete_type(param_type);
                     if (is_func_def and ast[0].uu == "identifier") {
-                        _ p_as = prog.func_param(ctx.as(param_type));
+                        _ p_as = prog.func_param(param_type.as());
                         ctx.def_id(param_name, t_val(p_as, param_type, true));
                     }
                     params.push_back(param_type);
@@ -394,10 +405,11 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         _ struct_name = ast[0].vv;
         if (ast[0].children.empty()) {
             try {
-                return ctx.scope_get_type_data(struct_name).type;
+                _ xx = ctx.get_type_data(struct_name).type;
+                return xx;
             } catch (t_undefined_name_error) {
-                _ type = make_struct_type(struct_name);
-                ctx.put_struct(struct_name, {type, prog.make_new_id()});
+                _ type = make_struct_type(struct_name, prog.make_new_id());
+                ctx.put_struct(struct_name, {type, type.as()});
                 return type;
             }
         }
@@ -408,9 +420,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
             for (size_t i = 1; i < c.children.size(); i++) {
                 _ type = base;
                 _ name = unpack_declarator(type, c[i][0], ctx);
-                if (type.is_incomplete()) {
-                    type = ctx.complete_type(type);
-                }
+                type = ctx.complete_type(type);
                 if (type.is_incomplete()) {
                     err("field has incomplete type", c[i].loc);
                 }
@@ -421,8 +431,6 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         if (struct_name.empty()) {
             struct_name = make_anon_type_id();
         }
-        _ type = make_struct_type(struct_name, field_name,
-                                  std::move(field_type));
         str id;
         try {
             _ data = ctx.scope_get_type_data(struct_name);
@@ -434,8 +442,10 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         } catch (t_undefined_name_error) {
             id = prog.make_new_id();
         }
+        _ type = make_struct_type(struct_name, std::move(field_name),
+                                  std::move(field_type), id);
         ctx.put_struct(struct_name, {type, id});
-        prog.def_struct(id, ctx.as(type, true));
+        prog.def_struct(id, type.as(true));
         return type;
     } else if (ast.children.size() == 1 and ast[0].uu == "enum") {
         _ name = (ast[0].vv == "") ? make_anon_type_id() : ast[0].vv;
@@ -517,9 +527,11 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
 }
 
 str gen_asm(const t_ast& ast) {
-    t_ctx ctx;
-    for (_& c : ast.children) {
-        gen_function(c, ctx);
+    {
+        t_ctx ctx;
+        for (_& c : ast.children) {
+            gen_function(c, ctx);
+        }
     }
     return prog.assemble();
 }

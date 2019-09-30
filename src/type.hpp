@@ -40,6 +40,7 @@ class t_type {
         bool is_volatile = false;
         bool is_variadic = false;
         str name;
+        str as;
         vec<str> field_names;
         vec<t_type> params;
         vec<t_type> children;
@@ -66,7 +67,7 @@ public:
     t_type(t_type_kind, t_type, size_t);
     t_type(t_type_kind, t_type);
     t_type(t_type_kind, const str&);
-    t_type(t_type_kind, const str&, vec<str>, vec<t_type>);
+    t_type(t_type_kind, const str&, vec<str>, vec<t_type>, const str&);
     t_type(t_type_kind, t_type, vec<t_type>, bool);
     t_type(t_type_kind);
     t_type(t_type, int);
@@ -107,6 +108,7 @@ public:
     bool is_incomplete() const;
     bool is_pointer_to_object() const;
     bool is_variadic() const;
+    str as(bool = false) const;
 };
 
 t_type make_func_type(t_type, vec<t_type>, bool = false);
@@ -114,8 +116,8 @@ t_type make_basic_type(const str&);
 t_type make_pointer_type(t_type);
 t_type make_array_type(t_type);
 t_type make_array_type(t_type, size_t);
-t_type make_struct_type(const str&, vec<str>, vec<t_type>);
-t_type make_struct_type(const str&);
+t_type make_struct_type(const str&, vec<str>, vec<t_type>, const str&);
+t_type make_struct_type(const str&, const str&);
 t_type make_enum_type(const str&);
 t_type unqualify(t_type);
 bool compatible(t_type, t_type);

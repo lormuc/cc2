@@ -654,20 +654,23 @@ namespace {
                 args.push_back(ctx.as(e));
             }
             _ rt = (t.is_variadic() ? t : t.return_type());
-            res = t_val(prog.call(ctx.as(rt), x.as(), args), t.return_type());
+            if (t.return_type() == void_type) {
+                prog.call_void(x.as(), args);
+                res = t_val();
+            } else {
+                res = t_val(prog.call(rt.as(), x.as(), args), t.return_type());
+            }
         } else if (op == "struct_member") {
             x = gen_exp(ast[0], ctx, false);
             if (not x.type().is_struct()) {
                 throw t_bad_operands();
             }
-            _ field_name = ast[1].vv;
-            _ struct_name = x.type().name();
-            _ type = ctx.get_type_data(struct_name).type;
-            _ idx = type.field_index(field_name);
+            _& field_name = ast[1].vv;
+            _ idx = x.type().field_index(field_name);
             if (idx == t_type::bad_field_index) {
                 throw t_bad_operands();
             }
-            _ res_type = type.field(idx);
+            _ res_type = x.type().field(idx);
             _ res_id = prog.member(ctx.as(x), idx);
             res = t_val(res_id, res_type, x.is_lvalue());
         } else if (op == "array_subscript") {
@@ -805,7 +808,7 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
     _ res_id = v.as();
     if (not compatible(t, v.type())) {
         _ x = ctx.as(v);
-        _ w = ctx.as(t);
+        _ w = t.as();
         str op;
         if (t.is_integral() and v.type().is_integral()) {
             if (t.size() < v.type().size()) {
