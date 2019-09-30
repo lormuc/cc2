@@ -21,7 +21,6 @@ struct t_asm_case {
 
 class t_prog {
     bool _silence = false;
-    int str_cnt = 0;
     int label_cnt = 0;
     int id_cnt = 0;
     str asm_funcs;
@@ -40,9 +39,11 @@ class t_prog {
 public:
     str def_str(const str& str);
     str make_new_id();
+    str make_new_global_id();
     void def_struct(const str& name, const str& type);
     void def_opaque_struct(const str& name);
     str def_var(const str& type);
+    str def_static(const str& type);
     str assemble();
     void put_label(const str&, bool = true);
     str make_label();

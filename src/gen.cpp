@@ -63,6 +63,11 @@ namespace {
             }
             return;
         }
+        _ is_static = false;
+        if (ast[0][0].uu == "storage_class_specifier"
+            and ast[0][0].vv == "static") {
+            is_static = true;
+        }
         _ base = make_base_type(ast[0], ctx);
         for (size_t i = 1; i < ast.children.size(); i++) {
             _ type = base;
@@ -71,7 +76,9 @@ namespace {
             if (not type.size()) {
                 err("type has an unknown size", ast[i].loc);
             }
-            _ val = t_val(prog.def_var(type.as()), type, true);
+            _ id = (is_static
+                   ? prog.def_static(type.as()) : prog.def_var(type.as()));
+            _ val = t_val(id, type, true);
             ctx.def_id(name, val);
             if (ast[i].children.size() > 1) {
                 _& ini = ast[i][1];
@@ -397,92 +404,96 @@ str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
     }
 }
 
-t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
+t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
+    _ struct_name = ast.vv;
+    if (ast.children.empty()) {
+        try {
+            return ctx.get_type_data(struct_name).type;
+        } catch (t_undefined_name_error) {
+            _ type = make_struct_type(struct_name, prog.make_new_id());
+            ctx.put_struct(struct_name, {type, type.as()});
+            return type;
+        }
+    }
+    vec<str> field_name;
+    vec<t_type> field_type;
+    for (_& c : ast.children) {
+        _ base = make_base_type(c[0], ctx);
+        for (size_t i = 1; i < c.children.size(); i++) {
+            _ type = base;
+            _ name = unpack_declarator(type, c[i][0], ctx);
+            type = ctx.complete_type(type);
+            if (type.is_incomplete()) {
+                err("field has incomplete type", c[i].loc);
+            }
+            field_name.push_back(name);
+            field_type.push_back(type);
+        }
+    }
+    if (struct_name.empty()) {
+        struct_name = make_anon_type_id();
+    }
+    str id;
+    try {
+        _ data = ctx.scope_get_type_data(struct_name);
+        id = data.as;
+        if (not (data.type.is_struct() and data.type.fields().empty())) {
+            err("redefinition", ast.loc);
+        }
+    } catch (t_undefined_name_error) {
+        id = prog.make_new_id();
+    }
+    _ type = make_struct_type(struct_name, std::move(field_name),
+                              std::move(field_type), id);
+    ctx.put_struct(struct_name, {type, id});
+    prog.def_struct(id, type.as(true));
+    return type;
+}
+
+t_type enum_specifier(const t_ast& ast, t_ctx& ctx) {
+    _ name = (ast.vv == "") ? make_anon_type_id() : ast.vv;
+    if (ast.children.empty()) {
+        try {
+            _ type = ctx.get_type_data(name).type;
+            if (not type.is_enum()) {
+                err(name + " is not an enumeration", ast[0].loc);
+            }
+            return type;
+        } catch (t_undefined_name_error) {
+            err("undefined enum", ast.loc);
+        }
+    }
+    _ cnt = 0;
+    for (_& e : ast.children) {
+        if (e.children.size() == 1) {
+            cnt = stoi(gen_exp(e[0], ctx).as());
+        }
+        ctx.def_id(e.vv, cnt);
+        cnt++;
+    }
+    _ type = make_enum_type(name);
+    try {
+        ctx.def_enum(name, type);
+    } catch (t_redefinition_error) {
+        err("redefinition of enum " + name, ast.loc);
+    }
+    return type;
+}
+
+t_type simple_specifiers(const t_ast& ast, t_ctx&) {
     t_type res;
     std::set<str> specifiers;
-    if (ast.children.size() == 1
-        and ast[0].uu == "struct_or_union_specifier") {
-        _ struct_name = ast[0].vv;
-        if (ast[0].children.empty()) {
-            try {
-                _ xx = ctx.get_type_data(struct_name).type;
-                return xx;
-            } catch (t_undefined_name_error) {
-                _ type = make_struct_type(struct_name, prog.make_new_id());
-                ctx.put_struct(struct_name, {type, type.as()});
-                return type;
-            }
-        }
-        vec<str> field_name;
-        vec<t_type> field_type;
-        for (_& c : ast[0][0].children) {
-            _ base = make_base_type(c[0], ctx);
-            for (size_t i = 1; i < c.children.size(); i++) {
-                _ type = base;
-                _ name = unpack_declarator(type, c[i][0], ctx);
-                type = ctx.complete_type(type);
-                if (type.is_incomplete()) {
-                    err("field has incomplete type", c[i].loc);
-                }
-                field_name.push_back(name);
-                field_type.push_back(type);
-            }
-        }
-        if (struct_name.empty()) {
-            struct_name = make_anon_type_id();
-        }
-        str id;
-        try {
-            _ data = ctx.scope_get_type_data(struct_name);
-            id = data.as;
-            if (not (data.type.is_struct()
-                     and data.type.fields().empty())) {
-                err("redefinition", ast.loc);
-            }
-        } catch (t_undefined_name_error) {
-            id = prog.make_new_id();
-        }
-        _ type = make_struct_type(struct_name, std::move(field_name),
-                                  std::move(field_type), id);
-        ctx.put_struct(struct_name, {type, id});
-        prog.def_struct(id, type.as(true));
-        return type;
-    } else if (ast.children.size() == 1 and ast[0].uu == "enum") {
-        _ name = (ast[0].vv == "") ? make_anon_type_id() : ast[0].vv;
-        if (ast[0].children.empty()) {
-            try {
-                _ type = ctx.get_type_data(name).type;
-                if (not type.is_enum()) {
-                    err(name + " is not an enumeration", ast[0].loc);
-                }
-                return type;
-            } catch (t_undefined_name_error) {
-                err("undefined enum", ast.loc);
-            }
-        }
-        _ cnt = 0;
-        for (_& e : ast[0].children) {
-            if (e.children.size() == 1) {
-                cnt = stoi(gen_exp(e[0], ctx).as());
-            }
-            ctx.def_id(e.vv, cnt);
-            cnt++;
-        }
-        _ type = make_enum_type(name);
-        try {
-            ctx.def_enum(name, type);
-        } catch (t_redefinition_error) {
-            err("redefinition of enum " + name, ast.loc);
-        }
-        return type;
-    }
     for (_& c : ast.children) {
+        if (c.uu == "storage_class_specifier") {
+            continue;
+        }
         if (not (c.uu == "type_specifier"
-                 and has(type_specifiers, c.vv))) {
-            err("bad type specifier", c.loc);
+                 and has(simple_type_specifiers, c.vv))) {
+            cout << "c " << c.uu << " " << c.vv << "\n";
+            err("bad specifier", c.loc);
         }
         if (specifiers.count(c.vv) != 0) {
-            err("duplicate type specifier", c.loc);
+            err("duplicate specifier", c.loc);
         }
         specifiers.insert(c.vv);
     }
@@ -496,8 +507,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
     } else if (cmp({"unsigned", "char"})) {
         res = u_char_type;
     } else if (cmp({"short"}) or cmp({"signed", "short"})
-               or cmp({"short", "int"})
-               or cmp({"signed", "short", "int"})) {
+               or cmp({"short", "int"}) or cmp({"signed", "short", "int"})) {
         res = short_type;
     } else if (cmp({"unsigned", "short"})
                or cmp({"unsigned", "short", "int"})) {
@@ -509,8 +519,7 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
     } else if (cmp({"long"}) or cmp({"signed", "long"})
                or cmp({"long", "int"}) or cmp({"signed", "long", "int"})) {
         res = long_type;
-    } else if (cmp({"unsigned", "long"})
-               or cmp({"unsigned", "long", "int"})) {
+    } else if (cmp({"unsigned", "long"}) or cmp({"unsigned", "long", "int"})) {
         res = u_long_type;
     } else if (cmp({"float"})) {
         res = float_type;
@@ -524,6 +533,20 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         err("bad type ", ast.loc);
     }
     return res;
+}
+
+t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
+    for (_& c : ast.children) {
+        if (c.uu == "storage_class_specifier") {
+            continue;
+        }
+        if (c.uu == "struct_or_union_specifier") {
+            return struct_specifier(c, ctx);
+        } else if (c.uu == "enum") {
+            return enum_specifier(c, ctx);
+        }
+    }
+    return simple_specifiers(ast, ctx);
 }
 
 str gen_asm(const t_ast& ast) {

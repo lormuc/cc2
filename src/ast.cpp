@@ -13,7 +13,7 @@
 
 const _ debug = true;
 
-extern const vec<str> type_specifiers = {
+extern const vec<str> simple_type_specifiers = {
     "void", "char", "short", "int", "long", "float", "double",
     "signed", "unsigned"
 };
@@ -527,12 +527,12 @@ namespace {
             advance();
             if (cmp("{")) {
                 advance();
-                res.add_child(struct_declaration_list());
+                res.children = struct_declaration_list().children;
                 pop("}");
             }
         } else {
             pop("{");
-            res.add_child(struct_declaration_list());
+            res.children = struct_declaration_list().children;
             pop("}");
         }
         return res;
@@ -576,7 +576,7 @@ namespace {
     def_rule(enum_specifier);
 
     _ type_specifier_() {
-        if (has(type_specifiers, peek().uu)) {
+        if (has(simple_type_specifiers, peek().uu)) {
             _ res = t_ast("type_specifier", peek().uu, peek().loc);
             advance();
             return res;
@@ -716,8 +716,30 @@ namespace {
     }
     def_rule(init_declarator);
 
+    _ storage_class_specifier_() {
+        if (cmp("static")) {
+            _ res = t_ast("storage_class_specifier", "static", peek().loc);
+            advance();
+            return res;
+        } else {
+            throw t_parse_error(peek().loc);
+        }
+    }
+    def_rule(storage_class_specifier);
+
     _ declaration_specifiers_() {
-        return specifier_qualifier_list();
+        _ res = t_ast("declaration_specifiers", peek().loc);
+        res.add_child(or_(type_specifier,
+                          storage_class_specifier));
+        while (true) {
+            try {
+                res.add_child(or_(type_specifier,
+                                  storage_class_specifier));
+            } catch (t_parse_error) {
+                break;
+            }
+        }
+        return res;
     }
     def_rule(declaration_specifiers);
 

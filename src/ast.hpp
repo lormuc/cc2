@@ -74,14 +74,14 @@ struct t_ast {
     }
 
     t_ast& operator[](std::size_t i) {
-        return children[i];
+        return children.at(i);
     }
 
     const t_ast& operator[](std::size_t i) const {
-        return children[i];
+        return children.at(i);
     }
 };
 
 t_ast parse_program(const std::list<t_lexeme>&);
 
-extern const vec<str> type_specifiers;
+extern const vec<str> simple_type_specifiers;

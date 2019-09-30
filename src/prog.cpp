@@ -24,6 +24,11 @@ str t_prog::make_new_id() {
     return "%_" + std::to_string(id_cnt);
 }
 
+str t_prog::make_new_global_id() {
+    id_cnt++;
+    return "@_" + std::to_string(id_cnt);
+}
+
 void t_prog::a(const str& line) {
     append(func_body, func_line(line));
 }
@@ -56,8 +61,7 @@ void t_prog::put_label(const str& l, bool f) {
 
 str t_prog::def_str(const str& str) {
     _ len = str.length() + 1;
-    _ name = "@str_" + std::to_string(str_cnt);
-    str_cnt++;
+    _ name = make_new_global_id();
     append(global_storage, name);
     append(global_storage, " = private unnamed_addr constant [");
     append(global_storage, std::to_string(len));
@@ -95,6 +99,13 @@ void t_prog::noop() {
 str t_prog::def_var(const str& type) {
     _ res = make_new_id();
     append(func_var_alloc, func_line(res + " = alloca " + type));
+    return res;
+}
+
+str t_prog::def_static(const str& type) {
+    _ res = make_new_global_id();
+    append(global_storage, res + " = internal global "
+           + type + " zeroinitializer\n");
     return res;
 }
 
