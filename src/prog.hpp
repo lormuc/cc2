@@ -31,6 +31,8 @@ class t_prog {
     str _func_name;
     str _func_return_type;
     vec<str> func_params;
+    bool _func_internal = false;
+    str decls;
 
     void a(const str&);
     str aa(const str&);
@@ -42,8 +44,7 @@ public:
     str make_new_global_id();
     void def_struct(const str& name, const str& type);
     void def_opaque_struct(const str& name);
-    str def_var(const str& type);
-    str def_static(const str& type);
+    str def(const str& type, bool = false);
     str assemble();
     void put_label(const str&, bool = true);
     str make_label();
@@ -72,4 +73,7 @@ public:
     void func_return_type(const str&);
     str func_param(const str&);
     void end_func();
+    void func_internal(bool);
+    void declare(const str& ret_type, const str& name, vec<str> params);
+    void declare_external(const str& name, const str& type);
 };

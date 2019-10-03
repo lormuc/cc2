@@ -5,6 +5,7 @@
 #include <sstream>
 #include <fstream>
 #include <string>
+#include <ostream>
 #include <iostream>
 
 #define _ auto
@@ -63,4 +64,4 @@ auto has(const vec<t>& c, const t& e) {
 }
 
 str read_file_into_string(std::ifstream&);
-str print_bytes(const str&);
+void print_bytes(const str&, std::ostream&);

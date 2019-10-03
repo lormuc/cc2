@@ -5,6 +5,7 @@
 #include "type.hpp"
 
 class t_val {
+    str _linkage;
     str _as;
     t_type _type;
     bool _is_lvalue = false;
@@ -45,7 +46,6 @@ public:
     long s_val() const { return long(_i_val); }
     double f_val() const { return _f_val; }
     bool is_void_null() const { return _is_void_null; }
-    void set_type(t_type t) { _type = t; }
     bool is_false() const;
 
     t_val operator~() const;

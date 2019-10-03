@@ -50,55 +50,129 @@ namespace {
         }
     }
 
+    void gen_initialization(const t_val& x, const t_ast& y, t_ctx& ctx) {
+        if (x.type().is_scalar()) {
+            const t_ast* yy;
+            if (y[0].uu != "initializer") {
+                yy = &y[0];
+            } else {
+                if (not (y[0].children.size() == 1
+                         and y[0][0].uu != "initializer")) {
+                    err("this cannot be an initializer for a scalar", y.loc);
+                }
+                yy = &y[0][0];
+            }
+            gen_convert_assign(x, gen_exp(*yy, ctx), ctx);
+        } else {
+            if (x.type().is_struct() and y[0].uu != "initializer") {
+                gen_assign(x, gen_exp(y[0], ctx), ctx);
+            } else {
+                gen_init(x, y, ctx);
+            }
+        }
+    }
+
+    enum class t_storage_class {
+        _static, _typedef, _extern, _auto, _register, _none
+    };
+
+    t_storage_class storage_class(const t_ast& ast) {
+        _ res = t_storage_class::_none;
+        for (_& c : ast.children) {
+            if (c.uu == "storage_class_specifier") {
+                if (res != t_storage_class::_none) {
+                    err("more than one storage class specifier", ast.loc);
+                }
+                _& sc = c.vv;
+                if (sc == "static") {
+                    return t_storage_class::_static;
+                } else if (sc == "extern") {
+                    return t_storage_class::_extern;
+                } else if (sc == "typedef") {
+                    return t_storage_class::_typedef;
+                } else if (sc == "auto") {
+                    return t_storage_class::_auto;
+                } else if (sc == "register") {
+                    return t_storage_class::_register;
+                }
+            }
+        }
+        return res;
+    }
+
+    t_linkage linkage(t_storage_class sc, const str& name,
+                      bool is_func, const t_ctx& ctx) {
+        if (sc == t_storage_class::_typedef
+            or (not is_func and not ctx.is_global()
+                and sc != t_storage_class::_extern)) {
+            return t_linkage::none;
+        }
+        if (sc == t_storage_class::_static and ctx.is_global()) {
+            return t_linkage::internal;
+        }
+        if (sc == t_storage_class::_extern
+            or (is_func and sc == t_storage_class::_none)) {
+            try {
+                _ prv = ctx.get_global_id_data(name);
+                return prv.linkage;
+            } catch (t_undefined_name_error) {
+                return t_linkage::external;
+            }
+        }
+        if (not is_func and ctx.is_global() and sc == t_storage_class::_none) {
+            return t_linkage::external;
+        }
+        return t_linkage::none;
+    }
+
     void gen_declaration(const t_ast& ast, t_ctx& ctx) {
         if (ast.children.size() == 1 and ast[0].children.size() == 1
             and ast[0][0].uu == "struct_or_union_specifier"
             and ast[0][0].children.empty()) {
             _& struct_name = ast[0][0].vv;
             try {
-                ctx.scope_get_type_data(struct_name).type;
+                ctx.scope_get_tag_data(struct_name).type;
             } catch (t_undefined_name_error) {
                 _ type = make_struct_type(struct_name, prog.make_new_id());
                 ctx.put_struct(struct_name, {type, type.as()});
             }
             return;
         }
-        _ is_static = false;
-        if (ast[0][0].uu == "storage_class_specifier"
-            and ast[0][0].vv == "static") {
-            is_static = true;
-        }
+        _ sc = storage_class(ast[0]);
         _ base = make_base_type(ast[0], ctx);
+
         for (size_t i = 1; i < ast.children.size(); i++) {
             _ type = base;
             _ name = unpack_declarator(type, ast[i][0], ctx);
             type = ctx.complete_type(type);
-            if (not type.size()) {
-                err("type has an unknown size", ast[i].loc);
-            }
-            _ id = (is_static
-                   ? prog.def_static(type.as()) : prog.def_var(type.as()));
-            _ val = t_val(id, type, true);
-            ctx.def_id(name, val);
-            if (ast[i].children.size() > 1) {
-                _& ini = ast[i][1];
-                if (type.is_scalar()) {
-                    t_ast exp;
-                    if (ini[0].uu != "initializer") {
-                        exp = ini[0];
-                    } else {
-                        if (ini[0][0].uu == "initializer") {
-                            err("expected expresion", ini[0].loc);
-                        }
-                        exp = ini[0][0];
+            _ _linkage = linkage(sc, name, type.is_function(), ctx);
+            _ is_static = (_linkage != t_linkage::none
+                           or sc == t_storage_class::_static);
+            if (type.is_function()) {
+                ctx.put_id(name, t_val(ctx.as(name), type), _linkage);
+                if (_linkage == t_linkage::external) {
+                    vec<str> params;
+                    for (_& p : type.params()) {
+                        params.push_back(p.as());
                     }
-                    _ e = gen_exp(exp, ctx);
-                    gen_convert_assign(val, e, ctx);
-                } else {
-                    if (type.is_struct() and ini[0].uu != "initializer") {
-                        gen_assign(val, gen_exp(ini[0], ctx), ctx);
-                    } else {
-                        gen_init(val, ini, ctx);
+                    if (type.is_variadic()) {
+                        params.push_back("...");
+                    }
+                    prog.declare(type.return_type().as(), ctx.as(name),
+                                 params);
+                }
+            } else {
+                if (_linkage == t_linkage::external) {
+                    prog.declare_external(name, type.as());
+                } else if (_linkage == t_linkage::none) {
+                    if (not type.size()) {
+                        err("type has an unknown size", ast[i].loc);
+                    }
+                    _ id = prog.def(type.as(), is_static);
+                    _ val = t_val(id, type, true);
+                    ctx.def_id(name, val);
+                    if (ast[i].children.size() > 1) {
+                        gen_initialization(val, ast[i][1], ctx);
                     }
                 }
             }
@@ -150,7 +224,6 @@ namespace {
     }
 
     void gen_while(const t_ast& ast, t_ctx ctx) {
-        ctx.enter_scope();
         ctx.break_label(make_label());
         ctx.loop_body_end(make_label());
         _ loop_begin = make_label();
@@ -167,7 +240,6 @@ namespace {
     }
 
     void gen_do_while(const t_ast& ast, t_ctx ctx) {
-        ctx.enter_scope();
         ctx.break_label(make_label());
         ctx.loop_body_end(make_label());
         _ loop_begin = make_label();
@@ -181,7 +253,6 @@ namespace {
     }
 
     void gen_for(const t_ast& ast, t_ctx ctx) {
-        ctx.enter_scope();
         _ loop_begin = make_label();
         _ loop_body = make_label();
         ctx.break_label(make_label());
@@ -286,7 +357,6 @@ namespace {
     }
 
     void gen_compound_statement(const t_ast& ast, t_ctx ctx) {
-        ctx.enter_scope();
         if (ast.children.size() != 0) {
             for (_& c : ast.children) {
                 gen_block_item(c, ctx);
@@ -312,19 +382,31 @@ namespace {
     _ gen_function(const t_ast& ast, t_ctx& octx) {
         _ type = make_base_type(ast[0], octx);
         _ ctx = octx;
-        ctx.enter_scope();
         _ func_name = unpack_declarator(type, ast[1], ctx, true);
+        if (not type.is_function()) {
+            err("identifier does not have a function type", ast.loc);
+        }
         type = ctx.complete_type(type);
         _ ret_tp = type.return_type();
 
         _ as_name = ctx.as(func_name);
         prog.func_name(as_name);
         prog.func_return_type(ret_tp.as());
-        octx.def_id(func_name, t_val(as_name, type));
+
+        _ sc = storage_class(ast[0]);
+
+        if (not (sc == t_storage_class::_none or sc == t_storage_class::_extern
+                 or sc == t_storage_class::_static)) {
+            err("function storage-class specifier can only be extern"
+                " or static", ast[0].loc);
+        }
+        _ _linkage = linkage(sc, func_name, true, ctx);
+        prog.func_internal(_linkage == t_linkage::internal);
+        octx.put_id(func_name, t_val(as_name, type), _linkage);
 
         ctx.func_end(make_label());
         if (ret_tp != void_type) {
-            ctx.return_var(t_val(prog.def_var(ret_tp.as()), ret_tp, true));
+            ctx.return_var(t_val(prog.def(ret_tp.as()), ret_tp, true));
         }
         if (func_name == "main") {
             gen_assign(ctx.return_var(), t_val(0), ctx);
@@ -383,9 +465,18 @@ str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
                     is_variadic = true;
                 } else {
                     _ param_type = make_base_type(p[0], ctx);
-                    _ param_name = unpack_declarator(param_type, p[1], ctx);
+                    str param_name;
+                    if (p.children.size() == 2) {
+                        param_name = unpack_declarator(param_type, p[1], ctx);
+                    }
                     param_type = ctx.complete_type(param_type);
                     if (is_func_def and ast[0].uu == "identifier") {
+                        if (param_type.is_function()) {
+                            param_type = make_pointer_type(param_type);
+                        } else if (param_type.is_array()) {
+                            param_type = param_type.element_type();
+                            param_type = make_pointer_type(param_type);
+                        }
                         _ p_as = prog.func_param(param_type.as());
                         ctx.def_id(param_name, t_val(p_as, param_type, true));
                     }
@@ -408,7 +499,7 @@ t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
     _ struct_name = ast.vv;
     if (ast.children.empty()) {
         try {
-            return ctx.get_type_data(struct_name).type;
+            return ctx.get_tag_data(struct_name).type;
         } catch (t_undefined_name_error) {
             _ type = make_struct_type(struct_name, prog.make_new_id());
             ctx.put_struct(struct_name, {type, type.as()});
@@ -435,7 +526,7 @@ t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
     }
     str id;
     try {
-        _ data = ctx.scope_get_type_data(struct_name);
+        _ data = ctx.scope_get_tag_data(struct_name);
         id = data.as;
         if (not (data.type.is_struct() and data.type.fields().empty())) {
             err("redefinition", ast.loc);
@@ -454,7 +545,7 @@ t_type enum_specifier(const t_ast& ast, t_ctx& ctx) {
     _ name = (ast.vv == "") ? make_anon_type_id() : ast.vv;
     if (ast.children.empty()) {
         try {
-            _ type = ctx.get_type_data(name).type;
+            _ type = ctx.get_tag_data(name).type;
             if (not type.is_enum()) {
                 err(name + " is not an enumeration", ast[0].loc);
             }
@@ -549,12 +640,18 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
     return simple_specifiers(ast, ctx);
 }
 
-str gen_asm(const t_ast& ast) {
-    {
-        t_ctx ctx;
-        for (_& c : ast.children) {
+void gen_program(const t_ast& ast) {
+    t_ctx ctx;
+    for (_& c : ast.children) {
+        if (c.uu == "declaration") {
+            gen_declaration(c, ctx);
+        } else if (c.uu == "function_definition") {
             gen_function(c, ctx);
         }
     }
+}
+
+str gen_asm(const t_ast& ast) {
+    gen_program(ast);
     return prog.assemble();
 }

@@ -1,8 +1,6 @@
 #pragma once
 
 #include <string>
-#include <initializer_list>
-#include <array>
 #include <list>
 
 #include "misc.hpp"

@@ -17,15 +17,13 @@ _ hex_digit(int x) {
     }
 }
 
-str print_bytes(const str& s) {
-    str res;
+void print_bytes(const str& s, std::ostream& os) {
     for (_& ch : s) {
         if (isprint(ch)) {
-            res += ch;
+            os << ch;
         } else {
-            res += "\\";
-            res += hex_digit(ch / 16) + hex_digit(ch % 16);
+            os << "\\";
+            os << hex_digit(ch / 16) + hex_digit(ch % 16);
         }
     }
-    return res;
 }

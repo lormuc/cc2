@@ -717,8 +717,9 @@ namespace {
     def_rule(init_declarator);
 
     _ storage_class_specifier_() {
-        if (cmp("static")) {
-            _ res = t_ast("storage_class_specifier", "static", peek().loc);
+        if (cmp("static") or cmp("extern") or cmp("register") or cmp("auto")
+            or cmp("typedef")) {
+            _ res = t_ast("storage_class_specifier", peek().uu, peek().loc);
             advance();
             return res;
         } else {
@@ -927,13 +928,18 @@ namespace {
         return res;
     }
     def_rule(function_definition);
+
+    _ external_declaration_() {
+        return or_(declaration, function_definition);
+    }
+    def_rule(external_declaration);
 }
 
 t_ast parse_program(const std::list<t_lexeme>& n_ll) {
     init(n_ll);
     _ res = t_ast("program", peek().loc);
     while (not end()) {
-        res.add_child(function_definition());
+        res.add_child(external_declaration());
     }
     return res;
 }

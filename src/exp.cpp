@@ -439,7 +439,7 @@ namespace {
                                       true);
                 res = t_val(str("@snprintf"), tp);
             } else {
-                res = ctx.get_id_data(ast.vv);
+                res = ctx.get_id_data(ast.vv).val;
             }
         } else if (op == "+" and arg_cnt == 1) {
             res = gen_exp(ast[0], ctx);

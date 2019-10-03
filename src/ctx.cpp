@@ -50,7 +50,7 @@ t_type t_ctx::complete_type(const t_type& t) const {
         _ et = complete_type(t.element_type());
         return make_array_type(et, t.length());
     } else if (t.is_struct() and t.fields().empty()) {
-        return get_type_data(t.name()).type;
+        return get_tag_data(t.name()).type;
     } else if (t.is_struct()) {
         vec<t_type> field_types;
         for (size_t i = 0; i < t.length(); i++) {
@@ -64,16 +64,46 @@ t_type t_ctx::complete_type(const t_type& t) const {
     return t;
 }
 
-void t_ctx::enter_scope() {
-    types.enter_scope();
-    vars.enter_scope();
-}
-
 t_ctx::~t_ctx() {
-    for (_& [name, type_data] : types.scope_get()) {
+    for (_& [name, type_data] : tags.scope_get()) {
         _& t = type_data.type;
         if (t.is_struct() and t.is_incomplete()) {
             prog.def_opaque_struct(t.as());
         }
+    }
+}
+
+void t_ctx::def_id(const str& name, const t_val& val) {
+    try {
+        ids.scope_get(name);
+        throw t_redefinition_error();
+    } catch (t_undefined_name_error) {
+        ids.put(name, {val, t_linkage::none});
+    }
+}
+
+void t_ctx::def_label(const str& name, const str& data) {
+    try {
+        labels.scope_get(name);
+        throw t_redefinition_error();
+    } catch (t_undefined_name_error) {
+        labels.put(name, data);
+    }
+}
+
+t_id_data t_ctx::get_id_data(const str& name) const {
+    return ids.get(name);
+}
+
+t_id_data t_ctx::get_global_id_data(const str& name) const {
+    return ids.root().get(name);
+}
+
+void t_ctx::def_enum(const str& name, t_type type) {
+    try {
+        tags.scope_get(name);
+        throw t_redefinition_error();
+    } catch (t_undefined_name_error) {
+        tags.put(name, {type, ""});
     }
 }

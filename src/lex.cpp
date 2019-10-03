@@ -10,7 +10,7 @@
 #include "misc.hpp"
 #include "lex.hpp"
 
-const vec<str> operators = {
+const vec<str> punctuators = {
     "...", "<<=", ">>=",
 
     "&&", "||", "==", "!=", "<=", ">=", "++", "--", "<<", ">>",
@@ -102,10 +102,10 @@ class t_lexer {
             return false;
         }
     }
-    bool operator_() {
-        for (_& op : operators) {
-            if (match(op)) {
-                push(op);
+    bool punctuator() {
+        for (_& pu : punctuators) {
+            if (match(pu)) {
+                push(pu, pu);
                 return true;
             }
         }
@@ -193,13 +193,20 @@ class t_lexer {
         push("char_constant", val);
         return true;
     }
-    bool white_space() {
-        if (cmp_or(" \n\t\v\f")) {
-            if (peek() == '\n') {
-                push("newline");
-                in_include = false;
+    bool whitespace() {
+        if (peek() == '\n') {
+            push("newline", advance());
+            in_include = false;
+            return true;
+        } else if (cmp_or(" \t\v\f")) {
+            str val;
+            while (true) {
+                val += advance();
+                if (not cmp_or(" \t\v\f")) {
+                    break;
+                }
             }
-            advance();
+            push("whitespace", val);
             return true;
         } else if (match("/*")) {
             while (not match("*/")) {
@@ -262,14 +269,14 @@ public:
     void go() {
         while (not end()) {
             lexeme_loc = cur_loc;
-            (white_space() or header_name() or pp_number() or operator_()
+            (whitespace() or header_name() or pp_number() or punctuator()
              or char_constant() or string_literal() or identifier()
              or single());
         }
         push("eof");
     }
-    const std::list<t_lexeme>& get_result() {
-        return result;
+    std::list<t_lexeme> get_result() {
+        return std::move(result);
     }
     t_lexer(const str& _src)
         : src(_src)

@@ -1,4 +1,5 @@
 #include <string>
+#include <sstream>
 
 #include "prog.hpp"
 #include "misc.hpp"
@@ -66,7 +67,9 @@ str t_prog::def_str(const str& str) {
     append(global_storage, " = private unnamed_addr constant [");
     append(global_storage, std::to_string(len));
     append(global_storage, " x i8] c\"");
-    append(global_storage, print_bytes(str));
+    std::ostringstream os;
+    print_bytes(str, os);
+    append(global_storage, os.str());
     append(global_storage, "\\00\"\n");
     return name;
 }
@@ -89,6 +92,7 @@ str t_prog::assemble() {
     res += "\n";
     res += "declare i32 @printf(i8*, ...)\n";
     res += "declare i32 @snprintf(i8*, i64, i8*, ...)\n";
+    res += decls;
     return res;
 }
 
@@ -96,17 +100,33 @@ void t_prog::noop() {
     aa("add i1 0, 0");
 }
 
-str t_prog::def_var(const str& type) {
-    _ res = make_new_id();
-    append(func_var_alloc, func_line(res + " = alloca " + type));
-    return res;
+void t_prog::declare(const str& ret_type, const str& name, vec<str> params) {
+    str params_str;
+    for (_& p : params) {
+        if (params_str.empty()) {
+            params_str += p;
+        } else {
+            params_str += ", " + p;
+        }
+    }
+    decls += "declare " + ret_type + " " + name + "(" + params_str + ")\n";
 }
 
-str t_prog::def_static(const str& type) {
-    _ res = make_new_global_id();
-    append(global_storage, res + " = internal global "
-           + type + " zeroinitializer\n");
-    return res;
+void t_prog::declare_external(const str& name, const str& type) {
+    append(global_storage, "@" + name + " = external global " + type + "\n");
+}
+
+str t_prog::def(const str& type, bool _static) {
+    if (_static) {
+        _ res = make_new_global_id();
+        append(global_storage, res + " = internal global "
+               + type + " zeroinitializer\n");
+        return res;
+    } else {
+        _ res = make_new_id();
+        append(func_var_alloc, func_line(res + " = alloca " + type));
+        return res;
+    }
 }
 
 str t_prog::member(const t_asm_val& v, int i) {
@@ -222,7 +242,7 @@ void t_prog::func_return_type(const str& x) {
 }
 
 str t_prog::func_param(const str& t) {
-    _ as = def_var(t);
+    _ as = def(t);
     _ param_idx = "%" + std::to_string(func_params.size());
     store({t, param_idx}, {t + "*", as});
     func_params.push_back(t);
@@ -230,7 +250,9 @@ str t_prog::func_param(const str& t) {
 }
 
 void t_prog::end_func() {
-    append(asm_funcs, "define " + _func_return_type + " " + _func_name);
+    str linkage = (_func_internal ? "internal " : "");
+    append(asm_funcs, ("define " +
+                       linkage + _func_return_type + " " + _func_name));
     str params;
     for (_& p : func_params) {
         if (params != "") {
@@ -245,4 +267,9 @@ void t_prog::end_func() {
     func_params.clear();
     func_body = "";
     func_var_alloc = "";
+    _func_internal = false;
+}
+
+void t_prog::func_internal(bool x) {
+    _func_internal = x;
 }
