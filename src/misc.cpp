@@ -19,7 +19,7 @@ _ hex_digit(int x) {
 
 void print_bytes(const str& s, std::ostream& os) {
     for (_& ch : s) {
-        if (isprint(ch)) {
+        if (isprint(ch) and ch != '"') {
             os << ch;
         } else {
             os << "\\";

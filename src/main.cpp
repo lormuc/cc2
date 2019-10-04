@@ -39,8 +39,9 @@ _ print(const std::list<t_lexeme>& ls, std::ostream& os) {
     for (_& lx : ls) {
         os << lx.uu;
         if (not lx.vv.empty()) {
-            os << " || ";
+            os << " || \"";
             print_bytes(lx.vv, os);
+            os << "\"";
         }
         os << "\n";
     }
