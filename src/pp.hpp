@@ -4,4 +4,4 @@
 
 #include "lex.hpp"
 
-void preprocess(std::list<t_lexeme>&);
+void preprocess(std::list<t_pp_lexeme>&);

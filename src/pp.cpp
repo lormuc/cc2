@@ -2,39 +2,151 @@
 
 #include "pp.hpp"
 
-typedef std::list<t_lexeme> t_lex_seq;
+typedef std::list<t_pp_lexeme> t_lex_seq;
 
-_ pr(const t_lex_seq& ls) {
-    cout << "(";
-    if (not ls.empty()) {
-        _ initial = true;
-        for (_& lx : ls) {
-            if (not initial) {
-                cout << "`";
+struct t_macro {
+    bool is_func_like;
+    std::unordered_map<str, size_t> params;
+    t_lex_seq replacement;
+};
+
+namespace {
+    _ collect_args(_& j, _ finish) {
+        vec<t_lex_seq> res;
+        t_lex_seq arg;
+        _ paren_cnt = 0;
+        _ loc = (*j).loc;
+        while (true) {
+            if (j == finish) {
+                throw t_compile_error("unmatched (", loc);
             }
-            initial = false;
-            print_bytes(lx.vv, cout);
+            _& lx = (*j).kind;
+            if (lx == ")" and paren_cnt == 0) {
+                if (not arg.empty()) {
+                    res.push_back(arg);
+                    arg.clear();
+                }
+                break;
+            }
+            if (paren_cnt == 0 and lx == ",") {
+                res.push_back(arg);
+                arg.clear();
+            }
+            if (lx == "(") {
+                paren_cnt++;
+            }
+            if (lx == ")") {
+                paren_cnt--;
+            }
+            if (not (lx == "," and paren_cnt == 0)) {
+                arg.push_back(*j);
+            }
+            j++;
+        }
+        return res;
+    }
+
+    void expand(t_lex_seq& ls, t_lex_seq::iterator i,
+                t_lex_seq::iterator finish,
+                const std::unordered_map<str, t_macro>& macros);
+
+    void substitute(_ i, _ finish, const std::unordered_map<str, size_t>& fp,
+                    const vec<t_lex_seq>& ap, const _& hs, _& os,
+                    const _& macros) {
+        if (i == finish) {
+            for (_& x : os) {
+                x.hide_set.insert(hs.begin(), hs.end());
+            }
+            return;
+        }
+        _ j = fp.find((*i).val);
+        if (j != fp.end()) {
+            _ arg = ap[(*j).second];
+            expand(arg, arg.begin(), arg.end(), macros);
+            os.splice(os.end(), arg);
+            i++;
+            substitute(i, finish, fp, ap, hs, os, macros);
+            return;
+        }
+        os.push_back(*i);
+        i++;
+        substitute(i, finish, fp, ap, hs, os, macros);
+    }
+
+    void expand(t_lex_seq& ls, t_lex_seq::iterator i,
+                t_lex_seq::iterator finish,
+                const std::unordered_map<str, t_macro>& macros) {
+        if (i == finish) {
+            return;
+        }
+        _& hs = (*i).hide_set;
+        if ((*i).kind != "identifier" or hs.count((*i).val) != 0) {
+            i++;
+            expand(ls, i, finish, macros);
+            return;
+        }
+        _ macro_it = macros.find((*i).val);
+        if (macro_it == macros.end()) {
+            i++;
+            expand(ls, i, finish, macros);
+            return;
+        }
+        _& macro = (*macro_it).second;
+        if (macro.is_func_like) {
+            _ j = i;
+            j++;
+            while (j != finish and ((*j).kind == "whitespace"
+                                    or (*j).kind == "newline")) {
+                j++;
+            }
+            if (j == finish or (*j).kind != "(") {
+                i++;
+                expand(ls, i, finish, macros);
+                return;
+            }
+            j++;
+            _ args = collect_args(j, finish);
+            if (macro.params.size() != args.size()) {
+                throw t_compile_error("wrong number of arguments", (*i).loc);
+            }
+            _& rparen_hs = (*j).hide_set;
+            j++;
+            std::set<str> nhs;
+            std::set_intersection(hs.begin(), hs.end(),
+                                  rparen_hs.begin(), rparen_hs.end(),
+                                  std::inserter(nhs, nhs.begin()));
+            nhs.insert((*i).val);
+            t_lex_seq r;
+            _& mr = macro.replacement;
+            substitute(mr.begin(), mr.end(), macro.params, args, nhs, r,
+                       macros);
+            i = ls.erase(i, j);
+            i = ls.insert(i, r.begin(), r.end());
+            expand(ls, i, finish, macros);
+        } else {
+            _ nhs = hs;
+            nhs.insert((*i).val);
+            t_lex_seq r;
+            _& mr = macro.replacement;
+            substitute(mr.begin(), mr.end(), {}, {}, nhs, r, macros);
+            i = ls.erase(i);
+            i = ls.insert(i, r.begin(), r.end());
+            expand(ls, i, finish, macros);
         }
     }
-    cout << ")";
 }
 
 class t_preprocessor {
     t_lex_seq& lex_seq;
     t_lex_seq::iterator pos;
 
-    struct t_macro {
-        bool is_func_like;
-        std::unordered_map<str, size_t> params;
-        t_lex_seq replacement;
-    };
     std::unordered_map<str, t_macro> macros;
 
     bool end() {
-        return peek().uu == "eof" or pos == lex_seq.end();
+        return peek().kind == "eof" or pos == lex_seq.end();
     }
     void skip_ws() {
-        if (kind() == "whitespace") {
+        if (peek().kind == "whitespace") {
             advance();
         }
     }
@@ -42,14 +154,14 @@ class t_preprocessor {
         advance();
         skip_ws();
     }
-    t_lexeme& peek() {
+    t_pp_lexeme& peek() {
         return *pos;
     }
     void advance() {
         pos++;
     }
     void expect(const str& x) {
-        if (kind() != x) {
+        if (peek().kind != x) {
             throw t_compile_error("expected " + x, peek().loc);
         }
     }
@@ -57,15 +169,7 @@ class t_preprocessor {
         throw t_compile_error(msg, peek().loc);
     }
     str& val() {
-        return peek().vv;
-    }
-    str& kind() {
-        return peek().uu;
-    }
-    _ skip_ws_nl(_ it) {
-        while ((*it).uu == "whitespace" or (*it).uu == "newline") {
-            it++;
-        }
+        return peek().val;
     }
 
 public:
@@ -80,11 +184,11 @@ public:
         advance();
         _ is_func_like = false;
         std::unordered_map<str, size_t> params;
-        if (kind() == "(") {
+        if (peek().kind == "(") {
             is_func_like = true;
             advance_ws();
             size_t i = 0;
-            while (kind() != ")") {
+            while (peek().kind != ")") {
                 if (not params.empty()) {
                     expect(",");
                     advance_ws();
@@ -98,13 +202,13 @@ public:
         }
         skip_ws();
         t_lex_seq replace_list;
-        while (kind() != "newline") {
+        while (peek().kind != "newline") {
             replace_list.push_back(peek());
             advance();
         }
         advance();
         if (not replace_list.empty()
-            and replace_list.back().uu == "whitespace") {
+            and replace_list.back().kind == "whitespace") {
             replace_list.pop_back();
         }
         macros[id] = {is_func_like, params, replace_list};
@@ -130,7 +234,7 @@ public:
         } else if (cmd == "undef") {
             undef();
         } else if (cmd == "include") {
-            while (kind() != "newline") {
+            while (peek().kind != "newline") {
                 advance();
             }
             advance();
@@ -138,106 +242,24 @@ public:
         lex_seq.erase(line_begin, pos);
     }
 
-    _ substitute_args(const t_macro& macro, const vec<t_lex_seq>& args) {
-        _ res = macro.replacement;
-        _ it = res.begin();
-        while (it != res.end()) {
-            _ _next = next(it);
-            if ((*it).uu == "identifier") {
-                _ k = macro.params.find((*it).vv);
-                if (k != macro.params.end()) {
-                    _ idx = (*k).second;
-                    it = res.erase(it);
-                    res.insert(it, args[idx].begin(), args[idx].end());
-                }
-            }
-            it = _next;
-        }
-        return res;
-    }
-
-    _ collect_args(_& j) {
-        vec<t_lex_seq> res;
-        t_lex_seq arg;
-        _ paren_cnt = 0;
-        j++;
-        while (true) {
-            _& lx = (*j).uu;
-            if (lx == ")" and paren_cnt == 0) {
-                if (not arg.empty()) {
-                    res.push_back(arg);
-                    arg.clear();
-                }
-                break;
-            }
-            if (paren_cnt == 0 and lx == ",") {
-                res.push_back(arg);
-                arg.clear();
-            }
-            if (lx == "(") {
-                paren_cnt++;
-            }
-            if (lx == ")") {
-                paren_cnt--;
-            }
-            if (lx != ",") {
-                arg.push_back(*j);
-            }
-            j++;
-        }
-        return res;
-    }
-
-    _ expand_func_like_macro(_ j, const t_macro& macro) {
-        _ args = collect_args(j);
-        if (macro.params.size() != args.size()) {
-            err("wrong number of arguments");
-        }
-        j++;
-        _ replacement = substitute_args(macro, args);
-        pos = lex_seq.erase(pos, j);
-        lex_seq.insert(pos, replacement.begin(), replacement.end());
-    }
-
-    _ expand() {
-        while (not end() and kind() != "newline") {
-            if (kind() == "identifier") {
-                _& id = peek().vv;
-                _ it = macros.find(id);
-                if (it == macros.end()) {
-                    advance();
-                } else {
-                    _& macro = (*it).second;
-                    if (macro.is_func_like) {
-                        _ j = pos;
-                        j++;
-                        skip_ws_nl(j);
-                        if ((*j).uu == "(") {
-                            expand_func_like_macro(j, macro);
-                        } else {
-                            advance();
-                        }
-                    } else {
-                        pos = lex_seq.erase(pos);
-                        _& r = macro.replacement;
-                        lex_seq.insert(pos, r.begin(), r.end());
-                    }
-                }
-            } else {
-                advance();
-            }
-        }
-        if (not end()) {
-            advance();
-        }
-    }
-
     void scan() {
         while (not end()) {
-            if (kind() == "#") {
+            if (peek().kind == "#") {
                 directive();
             } else {
-                expand();
+                _ k = pos;
+                while (true) {
+                    if ((*k).kind == "eof") {
+                        break;
+                    }
+                    if (k != lex_seq.begin() and (*k).kind == "#"
+                        and (*std::next(k, -1)).kind == "newline") {
+                        break;
+                    }
+                    k++;
+                }
+                expand(lex_seq, pos, k, macros);
+                pos = k;
             }
         }
     }

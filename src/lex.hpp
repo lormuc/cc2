@@ -1,14 +1,18 @@
 #pragma once
 
-#include <string>
 #include <list>
+#include <set>
+#include <ostream>
 
 #include "misc.hpp"
 
-struct t_lexeme {
-    str uu;
-    str vv;
+struct t_pp_lexeme {
+    str kind;
+    str val;
     t_loc loc;
+    std::set<str> hide_set;
 };
 
-std::list<t_lexeme> lex(const str&);
+std::list<t_pp_lexeme> lex(const str&);
+void print(const std::list<t_pp_lexeme>& ls, std::ostream& os,
+           const str& separator = "");

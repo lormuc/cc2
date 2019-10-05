@@ -82,6 +82,12 @@ struct t_ast {
     }
 };
 
+struct t_lexeme {
+    str uu;
+    str vv;
+    t_loc loc;
+};
+
 t_ast parse_program(const std::list<t_lexeme>&);
 
 extern const vec<str> simple_type_specifiers;

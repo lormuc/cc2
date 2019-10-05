@@ -48,17 +48,10 @@ _ print(const std::list<t_lexeme>& ls, std::ostream& os) {
     os.flush();
 }
 
-_ print_as_text(const std::list<t_lexeme>& ls, std::ostream& os) {
+_ escape_seqs(std::list<t_pp_lexeme>& ls) {
     for (_& lx : ls) {
-        os << lx.vv;
-    }
-}
-
-_ escape_seqs(std::list<t_lexeme>& ls) {
-    for (_& lx : ls) {
-        _& kind = lx.uu;
-        _& val = lx.vv;
-        if (kind == "char_constant" or kind == "string_literal") {
+        _& val = lx.val;
+        if (lx.kind == "char_constant" or lx.kind == "string_literal") {
             str new_str;
             size_t i = 0;
             while (i < val.length()) {
@@ -102,33 +95,33 @@ const std::set<str> keywords = {
     "switch", "typedef", "union", "volatile"
 };
 
-_ convert_lexemes(std::list<t_lexeme>& ll) {
-    _ it = ll.begin();
-    while (it != ll.end()) {
-        _& name = (*it).uu;
-        _& val = (*it).vv;
-        if (name == "newline" or name == "whitespace") {
-            it = ll.erase(it);
+_ convert_lexemes(const std::list<t_pp_lexeme>& ls) {
+    std::list<t_lexeme> res;
+    for (_& lx : ls) {
+        _ kind = lx.kind;
+        _ val = lx.val;
+        if (kind == "newline" or kind == "whitespace") {
             continue;
         }
-        if (name == "identifier") {
+        if (kind == "identifier") {
             if (keywords.count(val) != 0) {
-                name = val;
+                kind = val;
             }
-        } else if (name == "pp_number") {
+        } else if (kind == "pp_number") {
             if (val.find('.') != str::npos or
                 ((val.find('e') != str::npos or val.find('E') != str::npos)
                  and not (val.length() >= 2
                           and (val[1] == 'x' or val[1] == 'X')))) {
-                name = "floating_constant";
+                kind = "floating_constant";
             } else {
-                name = "integer_constant";
+                kind = "integer_constant";
             }
-        } else if (name == "string_literal" or name == "char_constant") {
+        } else if (kind == "char_constant" or kind == "string_literal") {
             val = val.substr(1, val.length() - 2);
         }
-        it++;
+        res.push_back({kind, val, lx.loc});
     }
+    return res;
 }
 
 _ die(const str& msg) {
@@ -176,36 +169,36 @@ int main(int argc, char** argv) {
         _ phase_cnt = 0;
 
         title("lex", log);
-        _ ls = lex(src);
+        _ pp_ls = lex(src);
         phase_cnt++;
-        print(ls, log);
+        print(pp_ls, log);
         separator(log);
         if (phase_cnt == phase) {
-            print(ls, cout);
+            print(pp_ls, cout);
             cout << "\n";
             return 0;
         }
 
         title("preprocess", log);
-        preprocess(ls);
+        preprocess(pp_ls);
         phase_cnt++;
-        print(ls, log);
+        print(pp_ls, log);
         separator(log);
         if (phase_cnt == phase) {
-            print_as_text(ls, cout);
+            print(pp_ls, cout);
             cout << "\n";
             return 0;
         }
 
-        escape_seqs(ls);
-        phase_cnt++;
-        if (phase_cnt == phase) {
-            print(ls, cout);
-            cout << "\n";
-            return 0;
-        }
+        escape_seqs(pp_ls);
+        // phase_cnt++;
+        // if (phase_cnt == phase) {
+        //     print(pp_ls, cout);
+        //     cout << "\n";
+        //     return 0;
+        // }
 
-        convert_lexemes(ls);
+        _ ls = convert_lexemes(pp_ls);
         phase_cnt++;
         if (phase_cnt == phase) {
             print(ls, cout);

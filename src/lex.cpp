@@ -6,6 +6,7 @@
 #include <list>
 #include <iterator>
 #include <tuple>
+#include <ostream>
 
 #include "misc.hpp"
 #include "lex.hpp"
@@ -20,12 +21,27 @@ const vec<str> punctuators = {
     "+", "/", "*", "%", "&", "|", "^", "[", "]", ",", ".", "#",
 };
 
-namespace {
-    bool is_digit(int c) {
-        return '0' <= c and c <= '9';
-    }
-    bool is_nondigit(int c) {
-        return c == '_' or isalpha(c);
+bool is_digit(int c) {
+    return '0' <= c and c <= '9';
+}
+
+bool is_nondigit(int c) {
+    return c == '_' or isalpha(c);
+}
+
+bool is_whitespace(char ch) {
+    return ch == ' ' or ch == '\t' or ch == '\v' or ch == '\f' or ch == '\n';
+}
+
+void print(const std::list<t_pp_lexeme>& ls, std::ostream& os,
+           const str& separator) {
+    _ initial = true;
+    for (_& lx : ls) {
+        if (not initial) {
+            os << separator;
+        }
+        initial = false;
+        os << lx.val;
     }
 }
 
@@ -35,7 +51,7 @@ class t_lexer {
     t_loc cur_loc;
     t_loc lexeme_loc;
     bool in_include = false;
-    std::list<t_lexeme> result;
+    std::list<t_pp_lexeme> result;
 
     void err(const str& s) {
         throw t_compile_error("lexing error: " + s, lexeme_loc);
@@ -55,14 +71,13 @@ class t_lexer {
         if (n < 2) {
             return;
         }
-        _& l1 = *next(result.end(), -1);
-        in_include = ((*next(result.end(), -2)).uu == "#"
-                      and (l1.uu == "identifier" and l1.vv == "include")
-                      and (n == 2
-                           or (*next(result.end(), -3)).uu == "newline"));
+        _& l1 = (*next(result.end(), -1)).val;
+        _& l2 = (*next(result.end(), -2)).val;
+        _ nl3 = (n == 2 or (*next(result.end(), -3)).val == "\n");
+        in_include = (nl3 and l2 == "#" and l1 == "include");
     }
-    void push(const str& x, const str& val = "") {
-        result.push_back({x, val, lexeme_loc});
+    void push(const str& x, const str& val) {
+        result.push_back({x, val, lexeme_loc, {}});
     }
     str advance(int d = 1) {
         str res;
@@ -86,13 +101,6 @@ class t_lexer {
             return src[idx + n];
         }
         return -1;
-    }
-    bool cmp(const str& x) {
-        return src.compare(idx, x.length(), x);
-    }
-    bool cmp_or(const str& x) {
-        _ res = x.find(peek()) != str::npos;
-        return res;
     }
     bool match(const str& x) {
         if (src.compare(idx, x.length(), x) == 0) {
@@ -198,11 +206,11 @@ class t_lexer {
             push("newline", advance());
             in_include = false;
             return true;
-        } else if (cmp_or(" \t\v\f")) {
+        } else if (is_whitespace(peek())) {
             str val;
             while (true) {
                 val += advance();
-                if (not cmp_or(" \t\v\f")) {
+                if (not is_whitespace(peek()) or peek() == '\n') {
                     break;
                 }
             }
@@ -273,9 +281,9 @@ public:
              or char_constant() or string_literal() or identifier()
              or single());
         }
-        push("eof");
+        push("eof", "");
     }
-    std::list<t_lexeme> get_result() {
+    std::list<t_pp_lexeme> get_result() {
         return std::move(result);
     }
     t_lexer(const str& _src)
@@ -286,7 +294,7 @@ public:
     }
 };
 
-std::list<t_lexeme> lex(const str& src) {
+std::list<t_pp_lexeme> lex(const str& src) {
     t_lexer lexer(src);
     lexer.go();
     return lexer.get_result();
