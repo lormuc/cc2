@@ -48,6 +48,14 @@ _ print(const std::list<t_lexeme>& ls, std::ostream& os) {
     os.flush();
 }
 
+_ match(const str& s0, _& idx, const str& s1) {
+    if (s0.compare(idx, s1.length(), s1) == 0) {
+        idx += s1.length();
+        return true;
+    }
+    return false;
+}
+
 _ escape_seqs(std::list<t_pp_lexeme>& ls) {
     for (_& lx : ls) {
         _& val = lx.val;
@@ -55,10 +63,12 @@ _ escape_seqs(std::list<t_pp_lexeme>& ls) {
             str new_str;
             size_t i = 0;
             while (i < val.length()) {
-                if (i+1 < val.length()
-                    and val[i] == '\\' and val[i+1] == 'n') {
+                if (match(val, i, "\\n")) {
                     new_str += "\n";
-                    i += 2;
+                } else if (match(val, i, "\\\"")) {
+                    new_str += "\"";
+                } else if (match(val, i, "\\\\")) {
+                    new_str += "\\";
                 } else {
                     new_str += val[i];
                     i++;
@@ -66,6 +76,21 @@ _ escape_seqs(std::list<t_pp_lexeme>& ls) {
             }
             val = new_str;
         }
+    }
+}
+
+_ concatenate_string_literals(std::list<t_pp_lexeme>& ls) {
+    _ it = ls.begin();
+    while (it != ls.end()) {
+        if ((*it).kind == "string_literal") {
+            while (next(it) != ls.end()
+                   and (*next(it)).kind == "string_literal") {
+                (*it).val.pop_back();
+                (*it).val.append((*next(it)).val, 1);
+                ls.erase(next(it));
+            }
+        }
+        it++;
     }
 }
 
@@ -191,6 +216,7 @@ int main(int argc, char** argv) {
         }
 
         escape_seqs(pp_ls);
+        concatenate_string_literals(pp_ls);
         // phase_cnt++;
         // if (phase_cnt == phase) {
         //     print(pp_ls, cout);

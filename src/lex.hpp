@@ -16,3 +16,4 @@ struct t_pp_lexeme {
 std::list<t_pp_lexeme> lex(const str&);
 void print(const std::list<t_pp_lexeme>& ls, std::ostream& os,
            const str& separator = "");
+str pp_kind(const str&);

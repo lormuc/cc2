@@ -45,6 +45,33 @@ void print(const std::list<t_pp_lexeme>& ls, std::ostream& os,
     }
 }
 
+str pp_kind(const str& val) {
+    _ ch = val[0];
+    if (is_nondigit(ch)) {
+        return "identifier";
+    }
+    if (ch == '"') {
+        return "string_literal";
+    }
+    if (ch == '\'') {
+        return "char_constant";
+    }
+    if (ch == '\n') {
+        return "newline";
+    }
+    if (is_whitespace(ch)) {
+        return "whitespace";
+    }
+    _ it = std::find(punctuators.begin(), punctuators.end(), val);
+    if (it != punctuators.end()) {
+        return val;
+    }
+    if (ch == '.' or is_digit(ch)) {
+        return "pp_number";
+    }
+    return "single";
+}
+
 class t_lexer {
     const str& src;
     size_t idx;
@@ -79,16 +106,26 @@ class t_lexer {
     void push(const str& x, const str& val) {
         result.push_back({x, val, lexeme_loc, {}});
     }
+    _ advance_real() {
+        idx++;
+        cur_loc.column++;
+        if (src[idx-1] == '\n') {
+            cur_loc.line++;
+            cur_loc.column = 0;
+        }
+    }
     str advance(int d = 1) {
         str res;
-        while (d != 0 and idx < src.length()) {
-            res += src[idx];
-            idx++;
-            cur_loc.column++;
-            if (src[idx-1] == '\n') {
-                cur_loc.line++;
-                cur_loc.column = 0;
+        while (d != 0) {
+            while (src.compare(idx, 2, "\\\n") == 0) {
+                advance_real();
+                advance_real();
             }
+            if (idx >= src.length()) {
+                break;
+            }
+            res += src[idx];
+            advance_real();
             d--;
         }
         return res;
@@ -97,10 +134,21 @@ class t_lexer {
         return idx >= src.length();
     }
     int peek(int n = 0) {
-        if (idx + n < src.length()) {
-            return src[idx + n];
+        _ i = 0;
+        _ j = idx;
+        while (true) {
+            while (src.compare(j, 2, "\\\n") == 0) {
+                j += 2;
+            }
+            if (j >= src.length()) {
+                return -1;
+            }
+            if (i == n) {
+                return src[j];
+            }
+            i++;
+            j++;
         }
-        return -1;
     }
     bool match(const str& x) {
         if (src.compare(idx, x.length(), x) == 0) {

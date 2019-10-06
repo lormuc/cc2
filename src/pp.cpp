@@ -1,4 +1,5 @@
 #include <unordered_map>
+#include <cassert>
 
 #include "pp.hpp"
 
@@ -11,6 +12,13 @@ struct t_macro {
 };
 
 namespace {
+    _ skip_ws(_ i, _ fin) {
+        if (i != fin and (*i).kind == "whitespace") {
+            i++;
+        }
+        return i;
+    }
+
     _ collect_args(_& j, _ finish) {
         vec<t_lex_seq> res;
         t_lex_seq arg;
@@ -39,7 +47,23 @@ namespace {
                 paren_cnt--;
             }
             if (not (lx == "," and paren_cnt == 0)) {
-                arg.push_back(*j);
+                _ prv_ws = false;
+                if (not arg.empty()) {
+                    if (arg.back().kind == "whitespace") {
+                        if (lx == "newline" or lx == "whitespace") {
+                            prv_ws = true;
+                        }
+                    }
+                }
+                if (not prv_ws) {
+                    arg.push_back(*j);
+                    if (arg.back().val == "\n") {
+                        arg.back().kind = "whitespace";
+                    }
+                    if (arg.back().kind == "whitespace") {
+                        arg.back().val = " ";
+                    }
+                }
             }
             j++;
         }
@@ -50,6 +74,55 @@ namespace {
                 t_lex_seq::iterator finish,
                 const std::unordered_map<str, t_macro>& macros);
 
+    _ glue(t_lex_seq& ls, t_lex_seq rs) {
+        if (ls.back().kind == "whitespace") {
+            ls.pop_back();
+        }
+        if (rs.front().kind == "whitespace") {
+            rs.pop_front();
+        }
+        _& x = ls.back();
+        _& y = rs.front();
+        std::set<str> hs;
+        std::set_intersection(x.hide_set.begin(), x.hide_set.end(),
+                              y.hide_set.begin(), y.hide_set.end(),
+                              std::inserter(hs, hs.begin()));
+        x.hide_set = hs;
+        x.val += y.val;
+        x.kind = pp_kind(x.val);
+        rs.pop_front();
+        ls.splice(ls.end(), rs);
+    }
+
+    _ stringize(_ ls) {
+        if (not ls.empty() and ls.back().kind == "whitespace") {
+            ls.pop_back();
+        }
+        if (not ls.empty() and ls.front().kind == "whitespace") {
+            ls.pop_front();
+        }
+        assert(not ls.empty());
+        str val;
+        val += "\"";
+        for (_& lx : ls) {
+            if (lx.kind == "char_constant" or lx.kind == "string_literal") {
+                for (_ ch : lx.val) {
+                    if (ch == '\\') {
+                        val += "\\\\";
+                    } else if (ch == '"') {
+                        val += "\\\"";
+                    } else {
+                        val += ch;
+                    }
+                }
+            } else {
+                val += lx.val;
+            }
+        }
+        val += "\"";
+        return t_pp_lexeme{"string_literal", val, ls.front().loc, {}};
+    }
+
     void substitute(_ i, _ finish, const std::unordered_map<str, size_t>& fp,
                     const vec<t_lex_seq>& ap, const _& hs, _& os,
                     const _& macros) {
@@ -59,13 +132,54 @@ namespace {
             }
             return;
         }
-        _ j = fp.find((*i).val);
-        if (j != fp.end()) {
-            _ arg = ap[(*j).second];
-            expand(arg, arg.begin(), arg.end(), macros);
-            os.splice(os.end(), arg);
-            i++;
-            substitute(i, finish, fp, ap, hs, os, macros);
+        if ((*i).val == "#") {
+            _ i1 = skip_ws(next(i), finish);
+            if (i1 != finish) {
+                _ p_it = fp.find((*i1).val);
+                if (p_it != fp.end()) {
+                    _ idx = (*p_it).second;
+                    os.push_back(stringize(ap[idx]));
+                    i1++;
+                    substitute(i1, finish, fp, ap, hs, os, macros);
+                    return;
+                }
+            }
+        }
+        if ((*i).val == "##") {
+            _ i1 = skip_ws(next(i), finish);
+            if (i1 != finish) {
+                _ p_it = fp.find((*i1).val);
+                if (os.empty()) {
+                    throw t_compile_error("## cannot occur at the beginning or"
+                                          " at the end of a replacement list",
+                                          (*i).loc);
+                }
+                if (p_it != fp.end()) {
+                    _ idx = (*p_it).second;
+                    glue(os, ap[idx]);
+                } else {
+                    glue(os, {*i1});
+                }
+                i1++;
+                substitute(i1, finish, fp, ap, hs, os, macros);
+                return;
+            }
+        }
+
+        _ p_it = fp.find((*i).val);
+        if (p_it != fp.end()) {
+            _ idx = (*p_it).second;
+            _ arg = ap[idx];
+            _ i1 = skip_ws(next(i), finish);
+            if (i1 != finish and (*i1).val == "##") {
+                os.splice(os.end(), arg);
+                substitute(i1, finish, fp, ap, hs, os, macros);
+            } else {
+                expand(arg, arg.begin(), arg.end(), macros);
+                os.splice(os.end(), arg);
+                i++;
+                substitute(i, finish, fp, ap, hs, os, macros);
+            }
             return;
         }
         os.push_back(*i);
@@ -145,14 +259,11 @@ class t_preprocessor {
     bool end() {
         return peek().kind == "eof" or pos == lex_seq.end();
     }
-    void skip_ws() {
+    void advance_ws() {
+        advance();
         if (peek().kind == "whitespace") {
             advance();
         }
-    }
-    void advance_ws() {
-        advance();
-        skip_ws();
     }
     t_pp_lexeme& peek() {
         return *pos;
@@ -200,7 +311,7 @@ public:
             }
             advance();
         }
-        skip_ws();
+        pos = skip_ws(pos, lex_seq.end());
         t_lex_seq replace_list;
         while (peek().kind != "newline") {
             replace_list.push_back(peek());
@@ -244,7 +355,9 @@ public:
 
     void scan() {
         while (not end()) {
-            if (peek().kind == "#") {
+            _ i1 = skip_ws(pos, lex_seq.end());
+            if (i1 != lex_seq.end() and (*i1).val == "#") {
+                pos = i1;
                 directive();
             } else {
                 _ k = pos;
