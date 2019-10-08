@@ -123,8 +123,9 @@ namespace {
         return peek().uu == name;
     }
 
-    _ end() {
-        return ll_it == lexeme_list.end() or cmp("eof");
+    _ at_end() {
+        assert(ll_it != lexeme_list.end());
+        return (*ll_it).uu == "eof";
     }
 
     _ pop(const str& name) {
@@ -938,7 +939,7 @@ namespace {
 t_ast parse_program(const std::list<t_lexeme>& n_ll) {
     init(n_ll);
     _ res = t_ast("program", peek().loc);
-    while (not end()) {
+    while (not at_end()) {
         res.add_child(external_declaration());
     }
     return res;

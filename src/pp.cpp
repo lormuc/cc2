@@ -12,6 +12,10 @@ struct t_macro {
 };
 
 namespace {
+    _ is_eof(_ i) {
+        return (*i).val == "";
+    }
+
     _ skip_ws(_ i, _ fin) {
         if (i != fin and (*i).kind == "whitespace") {
             i++;
@@ -256,9 +260,6 @@ class t_preprocessor {
 
     std::unordered_map<str, t_macro> macros;
 
-    bool end() {
-        return peek().kind == "eof" or pos == lex_seq.end();
-    }
     void advance_ws() {
         advance();
         if (peek().kind == "whitespace") {
@@ -311,7 +312,9 @@ public:
             }
             advance();
         }
-        pos = skip_ws(pos, lex_seq.end());
+        if ((*pos).kind == "whitespace") {
+            pos++;
+        }
         t_lex_seq replace_list;
         while (peek().kind != "newline") {
             replace_list.push_back(peek());
@@ -354,20 +357,26 @@ public:
     }
 
     void scan() {
-        while (not end()) {
-            _ i1 = skip_ws(pos, lex_seq.end());
-            if (i1 != lex_seq.end() and (*i1).val == "#") {
+        while (not is_eof(pos)) {
+            _ i1 = pos;
+            if ((*i1).kind == "whitespace") {
+                i1++;
+            }
+            if ((*i1).val == "#") {
                 pos = i1;
                 directive();
             } else {
                 _ k = pos;
-                while (true) {
-                    if ((*k).kind == "eof") {
-                        break;
-                    }
-                    if (k != lex_seq.begin() and (*k).kind == "#"
-                        and (*std::next(k, -1)).kind == "newline") {
-                        break;
+                while (not is_eof(k)) {
+                    if (k != lex_seq.begin() and (*k).val == "#") {
+                        _ l = std::next(k, -1);
+                        if (l != lex_seq.begin()
+                            and (*l).kind == "whitespace") {
+                            l--;
+                        }
+                        if ((*l).val == "\n") {
+                            break;
+                        }
                     }
                     k++;
                 }
