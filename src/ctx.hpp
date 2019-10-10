@@ -110,6 +110,12 @@ public:
                 t_linkage linkage = t_linkage::none) {
         ids.put(name, {val, linkage});
     }
+    void def_typedef_id(const str& name, const t_type& type) {
+        ids.put(name, {t_val("", type), t_linkage::none});
+    }
+    t_type get_typedef_type(const str& name) {
+        return ids.get(name).val.type();
+    }
 
     _ loop_body_end(const str& x) { _loop_body_end = x; }
     const _& loop_body_end() { return _loop_body_end; }

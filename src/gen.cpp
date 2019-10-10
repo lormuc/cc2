@@ -16,6 +16,8 @@
 t_prog prog;
 
 namespace {
+    std::unordered_map<str, bool> func_is_defined;
+
     void gen_compound_statement(const t_ast& ast, t_ctx ctx);
     void gen_statement(const t_ast& c, t_ctx& ctx);
 
@@ -70,34 +72,6 @@ namespace {
                 gen_init(x, y, ctx);
             }
         }
-    }
-
-    enum class t_storage_class {
-        _static, _typedef, _extern, _auto, _register, _none
-    };
-
-    t_storage_class storage_class(const t_ast& ast) {
-        _ res = t_storage_class::_none;
-        for (_& c : ast.children) {
-            if (c.uu == "storage_class_specifier") {
-                if (res != t_storage_class::_none) {
-                    err("more than one storage class specifier", ast.loc);
-                }
-                _& sc = c.vv;
-                if (sc == "static") {
-                    return t_storage_class::_static;
-                } else if (sc == "extern") {
-                    return t_storage_class::_extern;
-                } else if (sc == "typedef") {
-                    return t_storage_class::_typedef;
-                } else if (sc == "auto") {
-                    return t_storage_class::_auto;
-                } else if (sc == "register") {
-                    return t_storage_class::_register;
-                }
-            }
-        }
-        return res;
     }
 
     t_linkage linkage(t_storage_class sc, const str& name,
@@ -158,21 +132,26 @@ namespace {
                     if (type.is_variadic()) {
                         params.push_back("...");
                     }
-                    prog.declare(type.return_type().as(), ctx.as(name),
-                                 params);
+                }
+                if (func_is_defined.count(name) == 0) {
+                    func_is_defined[name] = false;
                 }
             } else {
                 if (_linkage == t_linkage::external) {
                     prog.declare_external(name, type.as());
                 } else if (_linkage == t_linkage::none) {
-                    if (not type.size()) {
-                        err("type has an unknown size", ast[i].loc);
-                    }
-                    _ id = prog.def(type.as(), is_static);
-                    _ val = t_val(id, type, true);
-                    ctx.def_id(name, val);
-                    if (ast[i].children.size() > 1) {
-                        gen_initialization(val, ast[i][1], ctx);
+                    if (sc == t_storage_class::_typedef) {
+                        ctx.def_typedef_id(name, type);
+                    } else {
+                        if (not type.size()) {
+                            err("type has an unknown size", ast[i].loc);
+                        }
+                        _ id = prog.def(type.as(), is_static);
+                        _ val = t_val(id, type, true);
+                        ctx.def_id(name, val);
+                        if (ast[i].children.size() > 1) {
+                            gen_initialization(val, ast[i][1], ctx);
+                        }
                     }
                 }
             }
@@ -383,6 +362,7 @@ namespace {
         _ type = make_base_type(ast[0], octx);
         _ ctx = octx;
         _ func_name = unpack_declarator(type, ast[1], ctx, true);
+        func_is_defined[func_name] = true;
         if (not type.is_function()) {
             err("identifier does not have a function type", ast.loc);
         }
@@ -470,13 +450,13 @@ str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
                         param_name = unpack_declarator(param_type, p[1], ctx);
                     }
                     param_type = ctx.complete_type(param_type);
+                    if (param_type.is_function()) {
+                        param_type = make_pointer_type(param_type);
+                    } else if (param_type.is_array()) {
+                        param_type = param_type.element_type();
+                        param_type = make_pointer_type(param_type);
+                    }
                     if (is_func_def and ast[0].uu == "identifier") {
-                        if (param_type.is_function()) {
-                            param_type = make_pointer_type(param_type);
-                        } else if (param_type.is_array()) {
-                            param_type = param_type.element_type();
-                            param_type = make_pointer_type(param_type);
-                        }
                         _ p_as = prog.func_param(param_type.as());
                         ctx.def_id(param_name, t_val(p_as, param_type, true));
                     }
@@ -635,9 +615,35 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
             return struct_specifier(c, ctx);
         } else if (c.uu == "enum") {
             return enum_specifier(c, ctx);
+        } else if (c.uu == "typedef_name") {
+            return ctx.get_typedef_type(c.vv);
         }
     }
     return simple_specifiers(ast, ctx);
+}
+
+t_storage_class storage_class(const t_ast& ast) {
+    _ res = t_storage_class::_none;
+    for (_& c : ast.children) {
+        if (c.uu == "storage_class_specifier") {
+            if (res != t_storage_class::_none) {
+                err("more than one storage class specifier", ast.loc);
+            }
+            _& sc = c.vv;
+            if (sc == "static") {
+                return t_storage_class::_static;
+            } else if (sc == "extern") {
+                return t_storage_class::_extern;
+            } else if (sc == "typedef") {
+                return t_storage_class::_typedef;
+            } else if (sc == "auto") {
+                return t_storage_class::_auto;
+            } else if (sc == "register") {
+                return t_storage_class::_register;
+            }
+        }
+    }
+    return res;
 }
 
 void gen_program(const t_ast& ast) {
@@ -647,6 +653,16 @@ void gen_program(const t_ast& ast) {
             gen_declaration(c, ctx);
         } else if (c.uu == "function_definition") {
             gen_function(c, ctx);
+        }
+    }
+    for (_& [name, is_defined] : func_is_defined) {
+        if (not is_defined) {
+            _ t = ctx.get_id_data(name).val.type();
+            vec<str> params_as;
+            for (_& param : t.params()) {
+                params_as.push_back(param.as());
+            }
+            prog.declare(t.return_type().as(), name, params_as);
         }
     }
 }

@@ -232,7 +232,7 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        _ ast = parse_program(ls);
+        _ ast = parse_program(ls.cbegin());
         phase_cnt++;
         title("ast", log);
         print(ast, log);

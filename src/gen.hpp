@@ -21,4 +21,10 @@ t_type make_base_type(const t_ast& t, t_ctx& ctx);
 str unpack_declarator(t_type& type, const t_ast& t, t_ctx& ctx, bool = false);
 str gen_asm(const t_ast&);
 
+enum class t_storage_class {
+    _static, _typedef, _extern, _auto, _register, _none
+};
+
+t_storage_class storage_class(const t_ast& ast);
+
 extern t_prog prog;

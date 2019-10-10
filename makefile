@@ -25,4 +25,7 @@ $(target) : $(obj)
 clean :
 	rm -rf build/
 
-.PHONY : all clean
+test :
+	python3.7 test.py tests/
+
+.PHONY : all clean test

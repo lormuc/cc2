@@ -8,8 +8,8 @@
 
 #include "misc.hpp"
 #include "ast.hpp"
-#include "type.hpp"
 #include "lex.hpp"
+#include "gen.hpp"
 
 const _ debug = true;
 
@@ -18,10 +18,47 @@ extern const vec<str> simple_type_specifiers = {
     "signed", "unsigned"
 };
 
-namespace {
-    std::list<t_lexeme> lexeme_list;
-    std::list<t_lexeme>::iterator ll_it;
+class t_ast_ctx {
+    vec<std::unordered_map<str, bool>> typedef_names;
+    std::list<t_lexeme>::const_iterator pos;
+    t_ast ast;
+public:
+    t_ast_ctx()
+        : typedef_names({{}}) {
+    }
+    void init(std::list<t_lexeme>::const_iterator start) {
+        pos = start;
+    }
+    void enter_scope() {
+        typedef_names.push_back({});
+    }
+    void leave_scope() {
+        typedef_names.pop_back();
+    }
+    void put(const str& id, bool x) {
+        typedef_names.back()[id] = x;
+    }
+    bool is_typedef_name(const str& id) {
+        for (_ i = typedef_names.size(); i > 0; i--) {
+            _ x = typedef_names[i-1].find(id);
+            if (x != typedef_names[i-1].end()) {
+                return (*x).second;
+            }
+        }
+        return false;
+    }
+    const t_lexeme& peek() {
+        return *pos;
+    }
+    void advance() {
+        pos++;
+    }
+    bool at_end() {
+        return (*pos).uu == "eof";
+    }
+};
 
+namespace {
     t_ast exp();
     t_ast assign_exp();
     t_ast cast_exp();
@@ -29,7 +66,6 @@ namespace {
     t_ast statement();
     t_ast declarator();
     t_ast struct_declaration_list();
-    t_ast specifier_qualifier_list();
     t_ast identifier();
     t_ast abstract_declarator();
     t_ast declaration_specifiers();
@@ -40,26 +76,30 @@ namespace {
     t_ast type_name();
     t_ast const_exp();
 
-    _ init(const std::list<t_lexeme>& ll) {
-        lexeme_list = ll;
-        ll_it = lexeme_list.begin();
+    t_ast_ctx ctx;
+
+    _ init(_ pos) {
+        ctx.init(pos);
     }
 
     _& peek() {
-        assert(ll_it != lexeme_list.end());
-        return *ll_it;
+        return ctx.peek();
     }
 
     _ get_state() {
-        return ll_it;
+        return ctx;
     }
 
-    _ set_state(_ i) {
-        ll_it = i;
+    _ set_state(const _& x) {
+        ctx = x;
     }
 
     _ advance() {
-        ll_it++;
+        ctx.advance();
+    }
+
+    _ at_end() {
+        return ctx.at_end();
     }
 
     _ add_child_opt(_& res, _ f) {
@@ -121,11 +161,6 @@ namespace {
 
     _ cmp(const str& name) {
         return peek().uu == name;
-    }
-
-    _ at_end() {
-        assert(ll_it != lexeme_list.end());
-        return (*ll_it).uu == "eof";
     }
 
     _ pop(const str& name) {
@@ -250,10 +285,10 @@ namespace {
         _ res = t_ast("parameter_declaration", peek().loc);
         res.add_child(declaration_specifiers());
         try {
-            res.add_child(declarator());
+            res.add_child(abstract_declarator());
         } catch (t_parse_error) {
             try {
-                res.add_child(abstract_declarator());
+                res.add_child(declarator());
             } catch (t_parse_error) {
             }
         }
@@ -345,6 +380,10 @@ namespace {
             try {
                 res.add_child(abstract_declarator());
             } catch (t_parse_error) {
+                if (not (peek().uu == "eof" or peek().uu == ")"
+                         or peek().uu == ",")) {
+                    throw;
+                }
                 res.add_child(t_ast("identifier", "", peek().loc));
             }
             return res;
@@ -356,7 +395,7 @@ namespace {
 
     _ type_name_() {
         _ res = t_ast("type_name", peek().loc);
-        res.add_child(specifier_qualifier_list());
+        res.add_child(declaration_specifiers());
         try {
             res.add_child(abstract_declarator());
         } catch (t_parse_error) {
@@ -583,29 +622,28 @@ namespace {
             return res;
         } else if (cmp("struct") or cmp("union")) {
             return struct_or_union_specifier();
-        } else {
+        } else if (cmp("enum")) {
             return enum_specifier();
+        } else {
+            throw t_parse_error(peek().loc);
         }
     }
     def_rule(type_specifier);
 
-    _ specifier_qualifier_list_() {
-        _ res = t_ast("specifier_qualifier_list", peek().loc);
-        res.add_child(type_specifier());
-        while (true) {
-            try {
-                res.add_child(type_specifier());
-            } catch (t_parse_error) {
-                break;
-            }
+    _ typedef_name_() {
+        if (cmp("identifier") and ctx.is_typedef_name(peek().vv)) {
+            _ res = t_ast("typedef_name", peek().vv, peek().loc);
+            advance();
+            return res;
+        } else {
+            throw t_parse_error(peek().loc);
         }
-        return res;
     }
-    def_rule(specifier_qualifier_list);
+    def_rule(typedef_name);
 
     _ struct_declaration_() {
         _ res = t_ast("struct_declaration", peek().loc);
-        res.add_child(specifier_qualifier_list());
+        res.add_child(declaration_specifiers());
         res.add_child(struct_declarator_list());
         pop(";");
         return res;
@@ -731,26 +769,50 @@ namespace {
 
     _ declaration_specifiers_() {
         _ res = t_ast("declaration_specifiers", peek().loc);
-        res.add_child(or_(type_specifier,
-                          storage_class_specifier));
+        _ can_be_typedef_name = true;
         while (true) {
             try {
-                res.add_child(or_(type_specifier,
-                                  storage_class_specifier));
+                if (can_be_typedef_name
+                    and cmp("identifier") and ctx.is_typedef_name(peek().vv)) {
+                    res.add_child(typedef_name());
+                    break;
+                } else {
+                    _ x = or_(type_specifier, storage_class_specifier);
+                    res.add_child(x);
+                    if (x.uu != "storage_class_specifier"
+                        and x.uu != "type_qualifier") {
+                        can_be_typedef_name = false;
+                    }
+                }
             } catch (t_parse_error) {
                 break;
             }
+        }
+        if (res.children.empty()) {
+            throw t_parse_error(res.loc);
         }
         return res;
     }
     def_rule(declaration_specifiers);
 
+    _ find_id(const _& ast) {
+        if (ast.uu == "identifier") {
+            return ast.vv;
+        } else {
+            return find_id(ast[0]);
+        }
+    }
+
     _ declaration_() {
         _ res = t_ast("declaration", peek().loc);
         res.add_child(declaration_specifiers());
+        _ is_typedef = (storage_class(res[0]) == t_storage_class::_typedef);
         if (not cmp(";")) {
             while (true) {
-                res.add_child(init_declarator());
+                _ ini_decl = init_declarator();
+                _ id = find_id(ini_decl);
+                ctx.put(id, is_typedef);
+                res.add_child(ini_decl);
                 if (not cmp(",")) {
                     break;
                 }
@@ -763,12 +825,14 @@ namespace {
     def_rule(declaration);
 
     _ compound_statement_() {
+        ctx.enter_scope();
         _ res = t_ast("compound_statement", peek().loc);
         pop("{");
         while (not cmp("}")) {
             res.add_child(block_item());
         }
         advance();
+        ctx.leave_scope();
         return res;
     }
     def_rule(compound_statement);
@@ -936,8 +1000,8 @@ namespace {
     def_rule(external_declaration);
 }
 
-t_ast parse_program(const std::list<t_lexeme>& n_ll) {
-    init(n_ll);
+t_ast parse_program(std::list<t_lexeme>::const_iterator start) {
+    init(start);
     _ res = t_ast("program", peek().loc);
     while (not at_end()) {
         res.add_child(external_declaration());
