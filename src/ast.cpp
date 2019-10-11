@@ -931,7 +931,9 @@ namespace {
     _ return_statement_() {
         _ res = t_ast("return", peek().loc);
         pop("return");
-        res.add_child(exp());
+        if (not cmp(";")) {
+            res.add_child(exp());
+        }
         pop(";");
         return res;
     }

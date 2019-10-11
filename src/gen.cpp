@@ -296,8 +296,10 @@ namespace {
                 gen_exp(c.children[0], ctx);
             }
         } else if (c.uu == "return") {
-            _ val = gen_exp(c.children[0], ctx);
-            gen_convert_assign(ctx.return_var(), val, ctx);
+            if (c.children.size() != 0) {
+                _ val = gen_exp(c[0], ctx);
+                gen_convert_assign(ctx.return_var(), val, ctx);
+            }
             prog.br(ctx.func_end());
         } else if (c.uu == "compound_statement") {
             gen_compound_statement(c, ctx);

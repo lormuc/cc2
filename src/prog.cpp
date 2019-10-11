@@ -109,7 +109,7 @@ void t_prog::declare(const str& ret_type, const str& name, vec<str> params) {
             params_str += ", " + p;
         }
     }
-    decls += "declare " + ret_type + " " + name + "(" + params_str + ")\n";
+    decls += "declare " + ret_type + " @" + name + "(" + params_str + ")\n";
 }
 
 void t_prog::declare_external(const str& name, const str& type) {

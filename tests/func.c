@@ -6,6 +6,8 @@ void f(int c(int)) {
 
 void h(int a[4]) {
     printf("%lu\n", sizeof(a));
+    return;
+    return;
 }
 
 int g(int e) {
