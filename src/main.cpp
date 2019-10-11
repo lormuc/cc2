@@ -56,6 +56,29 @@ _ match(const str& s0, _& idx, const str& s1) {
     return false;
 }
 
+_ is_octal_digit(char digit) {
+    return '0' <= digit and digit <= '7';
+}
+
+_ is_hex_digit(char digit) {
+    return (('0' <= digit and digit <= '9') or ('a' <= digit and digit <= 'f')
+            or ('A' <= digit and digit <= 'F'));
+}
+
+_ octal_digit_to_int(char digit) {
+    return digit - '0';
+}
+
+_ hex_digit_to_int(char digit) {
+    if (digit >= 'a' and digit <= 'f') {
+        return digit - 'a';
+    }
+    if (digit >= 'A' and digit <= 'F') {
+        return digit - 'A';
+    }
+    return digit - '0';
+}
+
 _ escape_seqs(std::list<t_pp_lexeme>& ls) {
     for (_& lx : ls) {
         _& val = lx.val;
@@ -63,12 +86,50 @@ _ escape_seqs(std::list<t_pp_lexeme>& ls) {
             str new_str;
             size_t i = 0;
             while (i < val.length()) {
-                if (match(val, i, "\\n")) {
-                    new_str += "\n";
-                } else if (match(val, i, "\\\"")) {
-                    new_str += "\"";
-                } else if (match(val, i, "\\\\")) {
-                    new_str += "\\";
+                if (match(val, i, "\\")) {
+                    if (i < val.length() and is_octal_digit(val[i])) {
+                        _ ch = octal_digit_to_int(val[i]);
+                        i++;
+                        for (_ j = 1; j < 3; j++) {
+                            if (not (i < val.length()
+                                     and is_octal_digit(val[i]))) {
+                                break;
+                            }
+                            ch = 8 * ch + octal_digit_to_int(val[i]);
+                            i++;
+                        }
+                        new_str += char(ch);
+                    } else if (i < val.length() and val[i] == 'x') {
+                        i++;
+                        _ ch = 0;
+                        while (i < val.length() and is_hex_digit(val[i])) {
+                            ch = 16 * ch + hex_digit_to_int(val[i]);
+                            i++;
+                        }
+                        new_str += char(ch);
+                    } else if (match(val, i, "n")) {
+                        new_str += "\n";
+                    } else if (match(val, i, "a")) {
+                        new_str += "\a";
+                    } else if (match(val, i, "b")) {
+                        new_str += "\b";
+                    } else if (match(val, i, "f")) {
+                        new_str += "\f";
+                    } else if (match(val, i, "r")) {
+                        new_str += "\r";
+                    } else if (match(val, i, "t")) {
+                        new_str += "\t";
+                    } else if (match(val, i, "v")) {
+                        new_str += "\v";
+                    } else if (match(val, i, "\"")) {
+                        new_str += "\"";
+                    } else if (match(val, i, "\\")) {
+                        new_str += "\\";
+                    } else if (match(val, i, "'")) {
+                        new_str += "'";
+                    } else if (match(val, i, "?")) {
+                        new_str += "?";
+                    }
                 } else {
                     new_str += val[i];
                     i++;

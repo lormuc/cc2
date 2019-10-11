@@ -42,6 +42,7 @@ int main() {
             z.y = 34;
             printf("%d\n", z.y);
         }
+        printf("%d\n", int_);
     }
 }
 

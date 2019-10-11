@@ -150,6 +150,9 @@ class t_lexer {
             j++;
         }
     }
+    bool compare(const str& x) {
+        return src.compare(idx, x.length(), x) == 0;
+    }
     bool match(const str& x) {
         if (src.compare(idx, x.length(), x) == 0) {
             advance(x.length());
@@ -211,8 +214,8 @@ class t_lexer {
         str val;
         val += advance();
         while (peek() != '"') {
-            if (peek() == '\\' and peek(1) == '"') {
-                val += '"';
+            if (compare("\\\"") or compare("\\\\")) {
+                val += advance(2);
             } else {
                 if (not end() and peek() != '\n') {
                     val += advance();
@@ -232,8 +235,8 @@ class t_lexer {
         str val;
         val += advance();
         while (peek() != '\'') {
-            if (peek() == '\\' and peek(1) == '\'') {
-                val += '\'';
+            if (compare("\\\'") or compare("\\\\")) {
+                val += advance(2);
             } else {
                 if (not end() and peek() != '\n') {
                     val += advance();
