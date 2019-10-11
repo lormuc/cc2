@@ -151,6 +151,20 @@ namespace {
         return t_val(v.as(), v.type().pointee_type(), true);
     }
 
+    t_val struct_or_union_member(const t_val& x, const str& field_name,
+                                 const t_ctx& ctx) {
+        if (not (x.type().is_struct() or x.type().is_union())) {
+            throw t_bad_operands();
+        }
+        _ idx = x.type().field_index(field_name);
+        if (idx == t_type::bad_field_index) {
+            throw t_bad_operands();
+        }
+        _ res_type = x.type().field(idx);
+        _ res_id = prog.member(ctx.as(x), idx);
+        return t_val(res_id, res_type, x.is_lvalue());
+    }
+
     t_val gen_lt(t_val x, t_val y, const t_ctx& ctx) {
         if (x.type().is_arithmetic() and y.type().is_arithmetic()) {
             gen_arithmetic_conversions(x, y, ctx);
@@ -662,17 +676,10 @@ namespace {
             }
         } else if (op == "struct_member") {
             x = gen_exp(ast[0], ctx, false);
-            if (not x.type().is_struct()) {
-                throw t_bad_operands();
-            }
-            _& field_name = ast[1].vv;
-            _ idx = x.type().field_index(field_name);
-            if (idx == t_type::bad_field_index) {
-                throw t_bad_operands();
-            }
-            _ res_type = x.type().field(idx);
-            _ res_id = prog.member(ctx.as(x), idx);
-            res = t_val(res_id, res_type, x.is_lvalue());
+            res = struct_or_union_member(x, ast[1].vv, ctx);
+        } else if (op == "arrow") {
+            x = dereference(gen_exp(ast[0], ctx));
+            res = struct_or_union_member(x, ast[1].vv, ctx);
         } else if (op == "array_subscript") {
             _ z = gen_add(gen_exp(ast[0], ctx),
                           gen_exp(ast[1], ctx), ctx);

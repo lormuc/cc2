@@ -224,6 +224,9 @@ namespace {
             } else if (cmp(".")) {
                 advance();
                 res = t_ast("struct_member", {res, identifier()});
+            } else if (cmp("->")) {
+                advance();
+                res = t_ast("arrow", {res, identifier()});
             } else if (cmp("++")) {
                 advance();
                 res = t_ast("postfix_increment", {res});
