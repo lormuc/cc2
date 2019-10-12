@@ -5,8 +5,12 @@ int main() {
         int x;
         struct ll *nxt;
     };
-    struct ll e1 = {56, 0};
-    struct ll e0 = {44, &e1};
+    struct ll e1;
+    e1.x = 56;
+    e1.nxt = 0;
+    struct ll e0;
+    e0.x = 44;
+    e0.nxt = &e1;
     struct s2 { float tt; };
     struct s0 {
         int x;

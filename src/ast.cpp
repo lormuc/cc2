@@ -726,10 +726,10 @@ namespace {
     def_rule(declarator);
 
     _ initializer_() {
-        _ res = t_ast("initializer", peek().loc);
         try {
-            res.add_child(assign_exp());
+            return assign_exp();
         } catch (t_parse_error) {
+            _ res = t_ast("initializer_list", peek().loc);
             pop("{");
             while (true) {
                 res.add_child(initializer());
@@ -742,8 +742,8 @@ namespace {
                 }
             }
             pop("}");
+            return res;
         }
-        return res;
     }
     def_rule(initializer);
 

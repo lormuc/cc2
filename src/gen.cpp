@@ -38,40 +38,77 @@ namespace {
         return res;
     }
 
-    void gen_init(const t_val& v, const t_ast& ini, t_ctx& ctx) {
-        if (v.type().is_struct()) {
-            for (size_t i = 0; i < v.type().length(); i++) {
-                gen_init(gen_struct_member(v, i, ctx), ini[i], ctx);
-            }
-        } else if (v.type().is_array()) {
-            for (size_t i = 0; i < v.type().length(); i++) {
-                gen_init(gen_array_elt(v, i, ctx), ini[i], ctx);
-            }
+    _ zero_val(t_type type) {
+        if (type.is_floating()) {
+            return t_val(0.0, type);
         } else {
-            gen_convert_assign(v, gen_exp(ini[0], ctx), ctx);
+            return t_val(0l, type);
         }
     }
 
-    void gen_initialization(const t_val& x, const t_ast& y, t_ctx& ctx) {
-        if (x.type().is_scalar()) {
-            const t_ast* yy;
-            if (y[0].uu != "initializer") {
-                yy = &y[0];
-            } else {
-                if (not (y[0].children.size() == 1
-                         and y[0][0].uu != "initializer")) {
-                    err("this cannot be an initializer for a scalar", y.loc);
-                }
-                yy = &y[0][0];
-            }
-            gen_convert_assign(x, gen_exp(*yy, ctx), ctx);
+    str static_init(t_type type, const t_ast& ini, t_ctx& ctx);
+
+    str static_init_idx(t_type type, const t_ast& ini, size_t& j, t_ctx& ctx) {
+        _ res = type.as();
+        if (type.is_array()) {
+            res += " [ ";
         } else {
-            if (x.type().is_struct() and y[0].uu != "initializer") {
-                gen_assign(x, gen_exp(y[0], ctx), ctx);
+            res += " { ";
+        }
+        for (size_t i = 0; i < type.length(); i++) {
+            _ elt_type = type.element_type(i);
+            if ((elt_type.is_struct() or elt_type.is_array())
+                and (j == ini.children.size()
+                     or ini[j].uu != "initializer_list")) {
+                res += static_init_idx(elt_type, ini, j, ctx);
             } else {
-                gen_init(x, y, ctx);
+                if (j == ini.children.size()) {
+                    res += ctx.as(zero_val(elt_type)).join();
+                } else {
+                    res += static_init(elt_type, ini[j], ctx);
+                    j++;
+                }
+            }
+            if (i+1 != type.length()) {
+                res += ", ";
             }
         }
+        if (type.is_array()) {
+            res += " ]";
+        } else {
+            res += " }";
+        }
+        return res;
+    }
+
+    str static_init(t_type type, const t_ast& ini, t_ctx& ctx) {
+        if (type.is_scalar()) {
+            _ ptr = &ini;
+            while ((*ptr).uu == "initializer_list") {
+                if ((*ptr).children.size() != 1) {
+                    err("bad initializer list for a scalar", ini.loc);
+                }
+                ptr = &((*ptr)[0]);
+            }
+            _ val = gen_exp(*ptr, ctx);
+            val = gen_conversion(type, val, ctx);
+            if (not val.is_constant()) {
+                err("nonconstant initializer", ini.loc);
+            }
+            return ctx.as(val).join();
+        }
+        size_t j = 0;
+        _ res = static_init_idx(type, ini, j, ctx);
+        if (j < ini.children.size()) {
+            err("too many values in an initializer list", ini.loc);
+        }
+        return res;
+    }
+
+    _ gen_static_initializer(t_type type, const t_ast& ini, t_ctx& ctx) {
+        _ g = prog.def_static_val(static_init(type, ini, ctx));
+        _ as = prog.load({make_pointer_type(type).as(), g});
+        return t_val(as, type);
     }
 
     t_linkage linkage(t_storage_class sc, const str& name,
@@ -150,7 +187,14 @@ namespace {
                         _ val = t_val(id, type, true);
                         ctx.def_id(name, val);
                         if (ast[i].children.size() > 1) {
-                            gen_initialization(val, ast[i][1], ctx);
+                            _& init = ast[i][1];
+                            t_val w;
+                            if (init.uu != "initializer_list") {
+                                w = gen_exp(init, ctx);
+                            } else {
+                                w = gen_static_initializer(type, init, ctx);
+                            }
+                            gen_convert_assign(val, w, ctx);
                         }
                     }
                 }

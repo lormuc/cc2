@@ -795,8 +795,15 @@ t_val gen_struct_member(const t_val& v, size_t i, t_ctx& ctx) {
 }
 
 t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
+    if (t == v.type()) {
+        return v;
+    }
     if (t == void_type) {
         return t_val();
+    }
+    if (compatible(t, v.type())) {
+        _ res_id = prog.convert("bitcast", ctx.as(v), t.as());
+        return t_val(res_id, t);
     }
     if (not t.is_scalar() or not v.type().is_scalar()) {
         throw t_conversion_error(v.type(), t);
@@ -810,54 +817,53 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
             } else {
                 return t_val((unsigned long)(v.f_val()), t);
             }
-        }
-    }
-    _ res_id = v.as();
-    if (not compatible(t, v.type())) {
-        _ x = ctx.as(v);
-        _ w = t.as();
-        str op;
-        if (t.is_integral() and v.type().is_integral()) {
-            if (t.size() < v.type().size()) {
-                op = "trunc";
-            } else if (t.size() > v.type().size()) {
-                if (v.type().is_signed()) {
-                    op = "sext";
-                } else {
-                    op = "zext";
-                }
-            }
         } else if (t.is_floating() and v.type().is_floating()) {
-            if (t.size() < v.type().size()) {
-                op = "fptrunc";
-            } else if (t.size() > v.type().size()) {
-                op = "fpext";
-            }
+            return t_val(v.f_val(), t);
         } else if (t.is_floating() and v.type().is_integral()) {
-            if (v.type().is_signed()) {
-                op = "sitofp";
-            } else {
-                op = "uitofp";
-            }
-        } else if (t.is_integral() and v.type().is_floating()) {
-            if (t.is_signed()) {
-                op = "fptosi";
-            } else {
-                op = "fptoui";
-            }
-        } else if (t.is_pointer() and v.type().is_integral()) {
-            op = "inttoptr";
-        } else if (t.is_pointer() and v.type().is_pointer()) {
-            op = "bitcast";
-        } else if (t.is_integral() and v.type().is_pointer()) {
-            op = "ptrtoint";
-        } else {
-            throw t_conversion_error(v.type(), t);
-        }
-        if (op != "") {
-            res_id = prog.convert(op, x, w);
+            return t_val(double(v.s_val()), t);
         }
     }
+    _ x = ctx.as(v);
+    _ w = t.as();
+    _ op = str("bitcast");
+    if (t.is_integral() and v.type().is_integral()) {
+        if (t.size() < v.type().size()) {
+            op = "trunc";
+        } else if (t.size() > v.type().size()) {
+            if (v.type().is_signed()) {
+                op = "sext";
+            } else {
+                op = "zext";
+            }
+        }
+    } else if (t.is_floating() and v.type().is_floating()) {
+        if (t.size() < v.type().size()) {
+            op = "fptrunc";
+        } else if (t.size() > v.type().size()) {
+            op = "fpext";
+        }
+    } else if (t.is_floating() and v.type().is_integral()) {
+        if (v.type().is_signed()) {
+            op = "sitofp";
+        } else {
+            op = "uitofp";
+        }
+    } else if (t.is_integral() and v.type().is_floating()) {
+        if (t.is_signed()) {
+            op = "fptosi";
+        } else {
+            op = "fptoui";
+        }
+    } else if (t.is_pointer() and v.type().is_integral()) {
+        op = "inttoptr";
+    } else if (t.is_pointer() and v.type().is_pointer()) {
+        op = "bitcast";
+    } else if (t.is_integral() and v.type().is_pointer()) {
+        op = "ptrtoint";
+    } else {
+        throw t_conversion_error(v.type(), t);
+    }
+    _ res_id = prog.convert(op, x, w);
     return t_val(res_id, t);
 }
 

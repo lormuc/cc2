@@ -79,6 +79,7 @@ public:
     t_type return_type() const;
     t_type pointee_type() const;
     t_type element_type() const;
+    t_type element_type(size_t) const;
     size_t length() const;
     size_t field_index(const str&) const;
     t_type field(size_t) const;

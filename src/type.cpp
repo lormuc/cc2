@@ -146,6 +146,14 @@ t_type t_type::element_type() const {
     return (*ptr).children[0];
 }
 
+t_type t_type::element_type(size_t idx) const {
+    if (is_array()) {
+        return element_type();
+    } else {
+        return (*ptr).children[idx];
+    }
+}
+
 size_t t_type::length() const {
     if (kind() == t_type_kind::_array) {
         return (*ptr).length;

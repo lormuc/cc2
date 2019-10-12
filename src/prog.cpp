@@ -273,3 +273,10 @@ void t_prog::end_func() {
 void t_prog::func_internal(bool x) {
     _func_internal = x;
 }
+
+str t_prog::def_static_val(const str& val) {
+    _ name = make_new_global_id();
+    append(global_storage, name + " = private unnamed_addr constant " + val);
+    append(global_storage, "\n");
+    return name;
+}
