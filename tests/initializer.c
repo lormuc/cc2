@@ -48,8 +48,6 @@ int main() {
         printf("\n");
     }
     printf("\n");
-    /* int x[] = { 1, 3, 5 }; */
-    /* struct { int a[3], b; } w[] = { { 1 }, 2 }; */
     short q[4][3][2] = {
         { 1 },
         { 2, 3 },
@@ -106,4 +104,37 @@ int main() {
         }
         printf("\n");
     }
+    {
+        int x[] = { 1, 3, 5 };
+        int i;
+        for (i = 0; i < 3; i++) {
+            printf("%d ", x[i]);
+        }
+        printf("\n");
+    }
+    {
+        struct { int a[3], b; } w[] = { { 1 }, 2, 3, 4 };
+        printf("%d\n", w[0].a[0]);
+        printf("%d\n", w[0].a[1]);
+        printf("%d\n", w[0].a[2]);
+        printf("%d\n", w[0].b);
+        printf("%d\n", w[1].a[0]);
+        printf("%d\n", w[1].a[1]);
+        printf("%d\n", w[1].a[2]);
+        printf("%d\n", w[1].b);
+    }
+    {
+        char s[] = "abc", t[3] = {"abc"};
+        printf("%ld\n", sizeof(s));
+        printf("%ld\n", sizeof(t));
+        printf("%s\n", s);
+        printf("%c%c%c\n", t[0], t[1], t[2]);
+    }
+    /* { */
+    /*     char* ss[] = {"aaa", "bbb", "ccc"}; */
+    /*     int i; */
+    /*     for (i = 0; i < 3; i++) { */
+    /*         printf("%s\n", ss[i]); */
+    /*     } */
+    /* } */
 }

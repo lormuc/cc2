@@ -110,6 +110,7 @@ public:
     bool is_pointer_to_object() const;
     bool is_variadic() const;
     str as(bool = false) const;
+    bool has_known_length() const;
 };
 
 t_type make_func_type(t_type, vec<t_type>, bool = false);

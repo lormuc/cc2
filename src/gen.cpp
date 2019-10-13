@@ -48,6 +48,10 @@ namespace {
 
     str static_init(t_type type, const t_ast& ini, t_ctx& ctx);
 
+    _ is_char_array(t_type type) {
+        return type.is_array() and unqualify(type.element_type()) == char_type;
+    }
+
     str static_init_idx(t_type type, const t_ast& ini, size_t& j, t_ctx& ctx) {
         _ res = type.as();
         if (type.is_array()) {
@@ -55,6 +59,12 @@ namespace {
         } else {
             res += " { ";
         }
+        _ is_str = (is_char_array(type) and ini.uu == "string_literal");
+        _ is_str_in_braces = (is_char_array(type)
+                              and ini.uu == "initializer_list"
+                              and ini[0].uu == "string_literal");
+        _& str_ini = (is_str_in_braces ? ini[0].vv : ini.vv);
+        is_str = is_str or is_str_in_braces;
         for (size_t i = 0; i < type.length(); i++) {
             _ elt_type = type.element_type(i);
             if ((elt_type.is_struct() or elt_type.is_array())
@@ -62,10 +72,16 @@ namespace {
                      or ini[j].uu != "initializer_list")) {
                 res += static_init_idx(elt_type, ini, j, ctx);
             } else {
-                if (j == ini.children.size()) {
+                _ len = (is_str ? (str_ini.length() + 1)
+                         : ini.children.size());
+                if (j == len) {
                     res += ctx.as(zero_val(elt_type)).join();
                 } else {
-                    res += static_init(elt_type, ini[j], ctx);
+                    if (is_str) {
+                        res += "i8 " + std::to_string(int(str_ini[j]));
+                    } else {
+                        res += static_init(elt_type, ini[j], ctx);
+                    }
                     j++;
                 }
             }
@@ -99,9 +115,6 @@ namespace {
         }
         size_t j = 0;
         _ res = static_init_idx(type, ini, j, ctx);
-        if (j < ini.children.size()) {
-            err("too many values in an initializer list", ini.loc);
-        }
         return res;
     }
 
@@ -109,6 +122,32 @@ namespace {
         _ g = prog.def_static_val(static_init(type, ini, ctx));
         _ as = prog.load({make_pointer_type(type).as(), g});
         return t_val(as, type);
+    }
+
+    _ complete_array(t_type type, const t_ast& ast) {
+        size_t len = 0;
+        if (is_char_array(type) and ast.uu == "string_literal") {
+            len = ast.vv.length() + 1;
+        } else if (is_char_array(type) and ast.uu == "initializer_list"
+                   and ast.children.size() != 0
+                   and ast[0].uu == "string_literal") {
+            len = ast[0].vv.length() + 1;
+        } else if (type.element_type().is_scalar()) {
+            len = ast.children.size();
+        } else {
+            _ elt_len = type.element_type().length();
+            size_t i = 0;
+            while (i < ast.children.size()) {
+                if (ast[i].uu == "initializer_list") {
+                    len++;
+                    i++;
+                } else {
+                    len++;
+                    i += elt_len;
+                }
+            }
+        }
+        return make_array_type(type.element_type(), len);
     }
 
     t_linkage linkage(t_storage_class sc, const str& name,
@@ -180,16 +219,23 @@ namespace {
                     if (sc == t_storage_class::_typedef) {
                         ctx.def_typedef_id(name, type);
                     } else {
-                        if (not type.size()) {
+                        _ has_initializer = (ast[i].children.size() > 1);
+                        if (has_initializer and type.is_array()
+                            and not type.has_known_length()) {
+                            type = complete_array(type, ast[i][1]);
+                        }
+                        if (type.is_incomplete()) {
                             err("type has an unknown size", ast[i].loc);
                         }
                         _ id = prog.def(type.as(), is_static);
                         _ val = t_val(id, type, true);
                         ctx.def_id(name, val);
-                        if (ast[i].children.size() > 1) {
+                        if (has_initializer) {
                             _& init = ast[i][1];
                             t_val w;
-                            if (init.uu != "initializer_list") {
+                            if (init.uu != "initializer_list"
+                                and not (type.is_array()
+                                         and init.uu == "string_literal")) {
                                 w = gen_exp(init, ctx);
                             } else {
                                 w = gen_static_initializer(type, init, ctx);
@@ -536,9 +582,9 @@ t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
     vec<t_type> field_type;
     for (_& c : ast.children) {
         _ base = make_base_type(c[0], ctx);
-        for (size_t i = 1; i < c.children.size(); i++) {
+        for (size_t i = 0; i < c[1].children.size(); i++) {
             _ type = base;
-            _ name = unpack_declarator(type, c[i][0], ctx);
+            _ name = unpack_declarator(type, c[1][i], ctx);
             type = ctx.complete_type(type);
             if (type.is_incomplete()) {
                 err("field has incomplete type", c[i].loc);
@@ -606,7 +652,6 @@ t_type simple_specifiers(const t_ast& ast, t_ctx&) {
         }
         if (not (c.uu == "type_specifier"
                  and has(simple_type_specifiers, c.vv))) {
-            cout << "c " << c.uu << " " << c.vv << "\n";
             err("bad specifier", c.loc);
         }
         if (specifiers.count(c.vv) != 0) {

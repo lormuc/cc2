@@ -1,5 +1,5 @@
 import subprocess
-import tempfile
+from tempfile import TemporaryDirectory
 import os
 import sys
 
@@ -9,27 +9,30 @@ success_cnt = 0
 failure_cnt = 0
 
 def run_my_cc(_file):
-    llvm = os.path.join(tempfile.mkdtemp(), "llvm")
-    t = subprocess.run([my_cc, _file, llvm], capture_output=True)
-    if t.returncode == 0:
-        w = subprocess.run(["lli", llvm], capture_output=True)
-        return (w.returncode, w.stdout)
-    else:
-        return None
+    with TemporaryDirectory() as temp_dir:
+        llvm = os.path.join(temp_dir, "llvm")
+        t = subprocess.run([my_cc, _file, llvm], capture_output=True)
+        if t.returncode == 0:
+            w = subprocess.run(["lli", llvm], capture_output=True)
+            return (w.returncode, w.stdout)
+        else:
+            return None
 
 def run_cc(_file):
-    cc_out = os.path.join(tempfile.mkdtemp(), "cc_out")
-    t = subprocess.run(["gcc", _file, "-o", cc_out], capture_output=True)
-    if t.returncode == 0:
-        w = subprocess.run([cc_out], capture_output=True)
-        return (w.returncode, w.stdout)
-    else:
-        return None
+    with TemporaryDirectory() as temp_dir:
+        cc_out = os.path.join(temp_dir, "cc_out")
+        t = subprocess.run(["gcc", _file, "-o", cc_out],
+                           capture_output=True)
+        if t.returncode == 0:
+            w = subprocess.run([cc_out], capture_output=True)
+            return (w.returncode, w.stdout)
+        else:
+            return None
 
 def test_file(_file):
     my_cc_res = run_my_cc(_file)
     cc_res = run_cc(_file)
-    return my_cc_res == cc_res
+    return cc_res and my_cc_res == cc_res
 
 def test(filename):
     if os.path.isdir(filename):

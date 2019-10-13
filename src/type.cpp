@@ -333,6 +333,10 @@ bool t_type::is_pointer_to_object() const {
     return is_pointer() and pointee_type().is_object();
 }
 
+bool t_type::has_known_length() const {
+    return length() != 0;
+}
+
 str t_type::as(bool expand) const {
     _& t = *this;
     str res;
