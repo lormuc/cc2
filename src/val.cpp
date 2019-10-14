@@ -10,11 +10,7 @@ void t_val::i_init(const t_type& t, unsigned long v) {
     _type = t;
     _is_constant = true;
     _i_val = v;
-    if (type().is_signed()) {
-        _as = std::to_string(s_val());
-    } else {
-        _as = std::to_string(u_val());
-    }
+    _as = std::to_string(u_val());
 }
 
 void t_val::f_init(const t_type& t, double v) {
@@ -24,10 +20,11 @@ void t_val::f_init(const t_type& t, double v) {
     _f_val = v;
 }
 
-t_val::t_val(const str& id, const t_type& t, bool lv) {
+t_val::t_val(const str& id, const t_type& t, bool lv, bool n_is_constant) {
     _as = id;
     _type = t;
     _is_lvalue = lv;
+    _is_constant = n_is_constant;
 }
 
 t_val::t_val(void* p) {
@@ -106,21 +103,21 @@ t_val t_val::operator%(const t_val& x) const {
 t_val t_val::operator<(const t_val& x) const {
     assert(is_constant() and x.is_constant());
     if (type().is_signed()) {
-        return t_val(s_val() < x.s_val(), int_type);
+        return t_val(s_val() < x.s_val());
     } else if (type().is_floating()) {
-        return t_val(f_val() < x.f_val(), int_type);
+        return t_val(f_val() < x.f_val());
     } else {
-        return t_val(u_val() < x.u_val(), int_type);
+        return t_val(u_val() < x.u_val());
     }
 }
 t_val t_val::operator==(const t_val& x) const {
     assert(is_constant() and x.is_constant());
     if (type().is_signed()) {
-        return t_val(s_val() == x.s_val(), int_type);
+        return t_val(s_val() == x.s_val());
     } else if (type().is_floating()) {
-        return t_val(f_val() == x.f_val(), int_type);
+        return t_val(f_val() == x.f_val());
     } else {
-        return t_val(u_val() == x.u_val(), int_type);
+        return t_val(u_val() == x.u_val());
     }
 }
 t_val t_val::operator/(const t_val& x) const {

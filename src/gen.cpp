@@ -42,7 +42,7 @@ namespace {
         if (type.is_floating()) {
             return t_val(0.0, type);
         } else {
-            return t_val(0l, type);
+            return t_val(0ul, type);
         }
     }
 
@@ -199,7 +199,8 @@ namespace {
             _ is_static = (_linkage != t_linkage::none
                            or sc == t_storage_class::_static);
             if (type.is_function()) {
-                ctx.put_id(name, t_val(ctx.as(name), type), _linkage);
+                ctx.put_id(name, t_val(ctx.as(name), type, false, true),
+                           _linkage);
                 if (_linkage == t_linkage::external) {
                     vec<str> params;
                     for (_& p : type.params()) {
@@ -228,7 +229,7 @@ namespace {
                             err("type has an unknown size", ast[i].loc);
                         }
                         _ id = prog.def(type.as(), is_static);
-                        _ val = t_val(id, type, true);
+                        _ val = t_val(id, type, true, is_static);
                         ctx.def_id(name, val);
                         if (has_initializer) {
                             _& init = ast[i][1];
@@ -474,7 +475,7 @@ namespace {
         }
         _ _linkage = linkage(sc, func_name, true, ctx);
         prog.func_internal(_linkage == t_linkage::internal);
-        octx.put_id(func_name, t_val(as_name, type), _linkage);
+        octx.put_id(func_name, t_val(as_name, type, false, true), _linkage);
 
         ctx.func_end(make_label());
         if (ret_tp != void_type) {
@@ -629,7 +630,7 @@ t_type enum_specifier(const t_ast& ast, t_ctx& ctx) {
     _ cnt = 0;
     for (_& e : ast.children) {
         if (e.children.size() == 1) {
-            cnt = stoi(gen_exp(e[0], ctx).as());
+            cnt = gen_exp(e[0], ctx).s_val();
         }
         ctx.def_id(e.vv, cnt);
         cnt++;

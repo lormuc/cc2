@@ -1,5 +1,9 @@
 #include <stdio.h>
 
+void f0() {
+    printf("%d\n", 4);
+}
+
 int main() {
     int a = 8;
     printf("%d\n", a);
@@ -130,11 +134,29 @@ int main() {
         printf("%s\n", s);
         printf("%c%c%c\n", t[0], t[1], t[2]);
     }
-    /* { */
-    /*     char* ss[] = {"aaa", "bbb", "ccc"}; */
-    /*     int i; */
-    /*     for (i = 0; i < 3; i++) { */
-    /*         printf("%s\n", ss[i]); */
-    /*     } */
-    /* } */
+    {
+        char* ss[] = {"aaa", "bbb", "ccc"};
+        int i;
+        for (i = 0; i < 3; i++) {
+            printf("%s\n", ss[i]);
+        }
+    }
+    {
+        static int y[5];
+        y[0] = 930;
+        y[3] = 530;
+        int* z[2] = {&y[0], &y[3]};
+        void (* x[2])() = {f0, f0};
+        x[0]();
+        printf("%d %d\n", *(z[0]), *(z[1]));
+    }
+    {
+        struct ss {
+            int x, y;
+        };
+        static struct ss w = { 4, 5 };
+        int* x[] = { &w.x, &w.x + sizeof(int) };
+        printf("%d\n", *x[0]);
+        printf("%d\n", *x[1]);
+    }
 }

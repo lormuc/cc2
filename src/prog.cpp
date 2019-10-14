@@ -129,9 +129,13 @@ str t_prog::def(const str& type, bool _static) {
     }
 }
 
-str t_prog::member(const t_asm_val& v, int i) {
-    return aa("getelementptr inbounds " + deref(v.type) + ", " + v.join()
-              + ", i32 0, i32 " + std::to_string(i));
+str t_prog::member(const t_asm_val& v, int i, bool is_constant) {
+    _ arg = (deref(v.type) + ", " + v.join()
+             + ", i32 0, i32 " + std::to_string(i));
+    if (is_constant) {
+        return "getelementptr inbounds (" + arg + ")";
+    }
+    return aa("getelementptr inbounds " + arg);
 }
 
 str t_prog::load(const t_asm_val& v) {
@@ -164,9 +168,12 @@ str t_prog::convert(const str& op, const t_asm_val& x,
     return aa(op + " " + x.join() + " to " + t);
 }
 
-str t_prog::inc_ptr(const t_asm_val& x, const t_asm_val& y) {
-    return aa("getelementptr inbounds " + deref(x.type) + ", " + x.join()
-              + ", " + y.join());
+str t_prog::inc_ptr(const t_asm_val& x, const t_asm_val& y, bool is_constant) {
+    _ arg = (deref(x.type) + ", " + x.join() + ", " + y.join());
+    if (is_constant) {
+        return "getelementptr inbounds (" + arg + ")";
+    }
+    return aa("getelementptr inbounds " + arg);
 }
 
 str t_prog::call(const str& ret_type, const str& name,

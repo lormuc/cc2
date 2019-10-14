@@ -51,14 +51,15 @@ public:
     void cond_br(const str&, const str&, const str&);
     void br(const str&);
     void noop();
-    str member(const t_asm_val& v, int i);
+    str member(const t_asm_val& v, int i, bool is_constant = false);
     str load(const t_asm_val& v);
     void store(const t_asm_val& x, const t_asm_val& y);
     str apply(const str& op, const t_asm_val& x, const t_asm_val& y);
     str convert(const str& op, const t_asm_val& x, const str& t);
     str apply_rel(const str& op, const t_asm_val& x, const t_asm_val& y);
     str apply_rel(const str& op, const t_asm_val& x, const str& y);
-    str inc_ptr(const t_asm_val& x, const t_asm_val& y);
+    str inc_ptr(const t_asm_val& x, const t_asm_val& y,
+                bool is_constant = false);
     str call(const str&, const str&, const vec<t_asm_val>& args);
     void call_void(const str& name, const vec<t_asm_val>& args);
     str bit_not(const t_asm_val& x);

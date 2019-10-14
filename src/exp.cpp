@@ -28,7 +28,8 @@ namespace {
     }
 
     t_val adr(const t_val& x) {
-        return t_val(x.as(), make_pointer_type(x.type()));
+        return t_val(x.as(), make_pointer_type(x.type()),
+                     false, x.is_constant());
     }
 
     bool is_null(const t_val& x) {
@@ -86,9 +87,10 @@ namespace {
     }
 
     t_val gen_sub(t_val x, t_val y, const t_ctx& ctx) {
+        _ args_are_constant = (x.is_constant() and y.is_constant());
         if (x.type().is_arithmetic() and y.type().is_arithmetic()) {
             gen_arithmetic_conversions(x, y, ctx);
-            if (x.is_constant() and y.is_constant()) {
+            if (args_are_constant) {
                 return x - y;
             }
             str op;
@@ -112,8 +114,8 @@ namespace {
                    and y.type().is_integral()) {
             y = gen_conversion(uintptr_t_type, y, ctx);
             y = gen_neg(y, ctx);
-            _ res_id = prog.inc_ptr(ctx.as(x), ctx.as(y));
-            return t_val(res_id, x.type());
+            _ res_id = prog.inc_ptr(ctx.as(x), ctx.as(y), args_are_constant);
+            return t_val(res_id, x.type(), false, args_are_constant);
         } else {
             throw t_bad_operands();
         }
@@ -148,7 +150,7 @@ namespace {
     }
 
     t_val dereference(const t_val& v) {
-        return t_val(v.as(), v.type().pointee_type(), true);
+        return t_val(v.as(), v.type().pointee_type(), true, v.is_constant());
     }
 
     t_val struct_or_union_member(const t_val& x, const str& field_name,
@@ -161,8 +163,8 @@ namespace {
             throw t_bad_operands();
         }
         _ res_type = x.type().field(idx);
-        _ res_id = prog.member(ctx.as(x), idx);
-        return t_val(res_id, res_type, x.is_lvalue());
+        _ res_id = prog.member(ctx.as(x), idx, x.is_constant());
+        return t_val(res_id, res_type, x.is_lvalue(), x.is_constant());
     }
 
     t_val gen_lt(t_val x, t_val y, const t_ctx& ctx) {
@@ -346,9 +348,10 @@ namespace {
         if (x.type().is_integral() and y.type().is_pointer()) {
             std::swap(x, y);
         }
+        _ args_are_constant = (x.is_constant() and y.is_constant());
         if (x.type().is_arithmetic() and y.type().is_arithmetic()) {
             gen_arithmetic_conversions(x, y, ctx);
-            if (x.is_constant() and y.is_constant()) {
+            if (args_are_constant) {
                 return x + y;
             }
             str op;
@@ -362,8 +365,8 @@ namespace {
             return apply(op, x, y, ctx);
         } else if (x.type().is_pointer() and y.type().is_integral()) {
             y = gen_conversion(uintptr_t_type, y, ctx);
-            _ res_id = prog.inc_ptr(ctx.as(x), ctx.as(y));
-            return t_val(res_id, x.type());
+            _ res_id = prog.inc_ptr(ctx.as(x), ctx.as(y), args_are_constant);
+            return t_val(res_id, x.type(), false, args_are_constant);
         } else {
             throw t_bad_operands();
         }
@@ -440,7 +443,7 @@ namespace {
         } else if (op == "string_literal") {
             _ id = prog.def_str(ast.vv);
             _ t = make_array_type(char_type, ast.vv.length() + 1);
-            res = t_val(id, t, true);
+            res = t_val(id, t, true, true);
         } else if (op == "char_constant") {
             res = t_val(int(ast.vv[0]));
         } else if (op == "identifier") {
@@ -775,9 +778,9 @@ str gen_is_nonzero_i1(const t_val& x, const t_ctx& ctx) {
 }
 
 t_val gen_array_elt(const t_val& v, size_t i, t_ctx& ctx) {
-    _ res_id = prog.member(ctx.as(v), i);
+    _ res_id = prog.member(ctx.as(v), i, v.is_constant());
     _ res_type = v.type().element_type();
-    return t_val(res_id, res_type, true);
+    return t_val(res_id, res_type, true, v.is_constant());
 }
 
 void gen_int_promotion(t_val& x, const t_ctx& ctx) {
@@ -786,12 +789,6 @@ void gen_int_promotion(t_val& x, const t_ctx& ctx) {
         or x.type() == u_short_type or x.type().is_enum()) {
         x = gen_conversion(int_type, x, ctx);
     }
-}
-
-t_val gen_struct_member(const t_val& v, size_t i, t_ctx& ctx) {
-    _ res_type = v.type().field(i);
-    _ res_id = prog.member(ctx.as(v), i);
-    return t_val(res_id, res_type, true);
 }
 
 t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
@@ -808,7 +805,7 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
     if (not t.is_scalar() or not v.type().is_scalar()) {
         throw t_conversion_error(v.type(), t);
     }
-    if (v.is_constant()) {
+    if (v.is_constant() and t.is_arithmetic() and v.type().is_arithmetic()) {
         if (t.is_integral() and v.type().is_integral()) {
             return t_val(v.u_val(), t);
         } else if (t.is_integral() and v.type().is_floating()) {

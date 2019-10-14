@@ -8,7 +8,6 @@
 t_val gen_convert_assign(const t_val& lhs, const t_val& rhs, t_ctx& ctx);
 t_val gen_assign(const t_val& lhs, const t_val& rhs, t_ctx& ctx);
 t_val gen_array_elt(const t_val& v, size_t i, t_ctx& ctx);
-t_val gen_struct_member(const t_val& v, size_t i, t_ctx& ctx);
 t_val gen_is_zero(const t_val& x, const t_ctx& ctx);
 str gen_is_zero_i1(const t_val& x, const t_ctx& ctx);
 t_val gen_is_nonzero(const t_val& x, const t_ctx& ctx);
