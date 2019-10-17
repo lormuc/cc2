@@ -44,4 +44,44 @@ int main() {
 #if one > two
     pr(7);
 #endif
+
+#if 0
+    pr(8);
+#elif 0
+    pr(9);
+#elif 0
+    pr(10);
+#elif 0
+#else
+    pr(11);
+#endif
+
+#if 0
+    pr(12);
+#elif 1
+    pr(13);
+#elif 0
+    pr(14);
+#endif
+
+#define z0
+#ifdef z0
+    pr(15);
+#elif 1
+    pr(16);
+#elif 0
+    pr(17);
+#endif
+
+#ifdef z1
+    pr(18);
+#endif
+
+#ifndef z2
+#ifndef z3
+    pr(19);
+#else
+    pr(20);
+#endif
+#endif
 }

@@ -9,8 +9,8 @@
 struct t_pp_lexeme {
     str kind;
     str val;
-    t_loc loc;
-    std::set<str> hide_set;
+    t_loc loc = t_loc();
+    std::set<str> hide_set = {};
 };
 
 std::list<t_pp_lexeme> lex(const str&);

@@ -11,7 +11,7 @@
 #include "lex.hpp"
 #include "gen.hpp"
 
-const _ debug = true;
+const _ debug = false;
 
 extern const vec<str> simple_type_specifiers = {
     "void", "char", "short", "int", "long", "float", "double",
