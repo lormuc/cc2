@@ -4,7 +4,6 @@
 #include "type.hpp"
 
 class t_val {
-    // str _linkage;
     str _as;
     t_type _type;
     bool _is_lvalue = false;

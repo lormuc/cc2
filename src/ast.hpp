@@ -88,6 +88,7 @@ struct t_lexeme {
     t_loc loc;
 };
 
+t_ast parse_exp(std::list<t_lexeme>::const_iterator start);
 t_ast parse_program(std::list<t_lexeme>::const_iterator);
 
 extern const vec<str> simple_type_specifiers;

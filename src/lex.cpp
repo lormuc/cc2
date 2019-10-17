@@ -332,6 +332,9 @@ public:
              or char_constant() or string_literal() or identifier()
              or single());
         }
+        if (not result.empty() and result.back().kind != "newline") {
+            push("newline", "\n");
+        }
         push("eof", "");
     }
     std::list<t_pp_lexeme> get_result() {

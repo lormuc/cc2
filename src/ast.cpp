@@ -21,12 +21,12 @@ extern const vec<str> simple_type_specifiers = {
 class t_ast_ctx {
     vec<std::unordered_map<str, bool>> typedef_names;
     std::list<t_lexeme>::const_iterator pos;
-    t_ast ast;
 public:
-    t_ast_ctx()
-        : typedef_names({{}}) {
+    t_ast_ctx() {
     }
     void init(std::list<t_lexeme>::const_iterator start) {
+        typedef_names.clear();
+        typedef_names.push_back({});
         pos = start;
     }
     void enter_scope() {
@@ -1003,6 +1003,11 @@ namespace {
         return or_(declaration, function_definition);
     }
     def_rule(external_declaration);
+}
+
+t_ast parse_exp(std::list<t_lexeme>::const_iterator start) {
+    init(start);
+    return const_exp();
 }
 
 t_ast parse_program(std::list<t_lexeme>::const_iterator start) {

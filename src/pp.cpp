@@ -1,17 +1,187 @@
 #include <unordered_map>
+#include <unordered_set>
 #include <cassert>
 
 #include "pp.hpp"
+#include "ast.hpp"
+#include "exp.hpp"
 
-typedef std::list<t_pp_lexeme> t_lex_seq;
+std::list<t_lexeme> convert_lexemes(t_pp_c_iter it, t_pp_c_iter fin) {
+    static const std::unordered_set<str> keywords = {
+        "int", "return", "if", "else", "while", "for", "do",
+        "continue", "break", "struct", "float",
+        "char", "unsigned", "void", "auto", "case", "const",
+        "default", "double", "enum", "extern", "goto", "long",
+        "register", "short", "signed", "sizeof", "static", "struct",
+        "switch", "typedef", "union", "volatile"
+    };
+
+    std::list<t_lexeme> res;
+    for (; it != fin; it++) {
+        _ kind = (*it).kind;
+        _ val = (*it).val;
+        if (kind == "newline" or kind == "whitespace") {
+            continue;
+        }
+        if (kind == "identifier") {
+            if (keywords.count(val) != 0) {
+                kind = val;
+            }
+        } else if (kind == "pp_number") {
+            if (val.find('.') != str::npos or
+                ((val.find('e') != str::npos or val.find('E') != str::npos)
+                 and not (val.length() >= 2
+                          and (val[1] == 'x' or val[1] == 'X')))) {
+                kind = "floating_constant";
+            } else {
+                kind = "integer_constant";
+            }
+        } else if (kind == "char_constant" or kind == "string_literal") {
+            val = val.substr(1, val.length() - 2);
+        }
+        res.push_back({kind, val, (*it).loc});
+    }
+    return res;
+}
+
+namespace {
+    _ match(const str& s0, _& idx, const str& s1) {
+        if (s0.compare(idx, s1.length(), s1) == 0) {
+            idx += s1.length();
+            return true;
+        }
+        return false;
+    }
+
+    _ is_octal_digit(char digit) {
+        return '0' <= digit and digit <= '7';
+    }
+
+    _ is_hex_digit(char digit) {
+        return (('0' <= digit and digit <= '9')
+                or ('a' <= digit and digit <= 'f')
+                or ('A' <= digit and digit <= 'F'));
+    }
+
+    _ octal_digit_to_int(char digit) {
+        return digit - '0';
+    }
+
+    _ hex_digit_to_int(char digit) {
+        if (digit >= 'a' and digit <= 'f') {
+            return digit - 'a';
+        }
+        if (digit >= 'A' and digit <= 'F') {
+            return digit - 'A';
+        }
+        return digit - '0';
+    }
+}
+
+void escape_seqs(t_pp_iter it, t_pp_iter fin) {
+    for (; it != fin; it++) {
+        _& val = (*it).val;
+        if ((*it).kind == "char_constant" or (*it).kind == "string_literal") {
+            str new_str;
+            size_t i = 0;
+            while (i < val.length()) {
+                if (match(val, i, "\\")) {
+                    if (i < val.length() and is_octal_digit(val[i])) {
+                        _ ch = octal_digit_to_int(val[i]);
+                        i++;
+                        for (_ j = 1; j < 3; j++) {
+                            if (not (i < val.length()
+                                     and is_octal_digit(val[i]))) {
+                                break;
+                            }
+                            ch = 8 * ch + octal_digit_to_int(val[i]);
+                            i++;
+                        }
+                        new_str += char(ch);
+                    } else if (i < val.length() and val[i] == 'x') {
+                        i++;
+                        _ ch = 0;
+                        while (i < val.length() and is_hex_digit(val[i])) {
+                            ch = 16 * ch + hex_digit_to_int(val[i]);
+                            i++;
+                        }
+                        new_str += char(ch);
+                    } else if (match(val, i, "n")) {
+                        new_str += "\n";
+                    } else if (match(val, i, "a")) {
+                        new_str += "\a";
+                    } else if (match(val, i, "b")) {
+                        new_str += "\b";
+                    } else if (match(val, i, "f")) {
+                        new_str += "\f";
+                    } else if (match(val, i, "r")) {
+                        new_str += "\r";
+                    } else if (match(val, i, "t")) {
+                        new_str += "\t";
+                    } else if (match(val, i, "v")) {
+                        new_str += "\v";
+                    } else if (match(val, i, "\"")) {
+                        new_str += "\"";
+                    } else if (match(val, i, "\\")) {
+                        new_str += "\\";
+                    } else if (match(val, i, "'")) {
+                        new_str += "'";
+                    } else if (match(val, i, "?")) {
+                        new_str += "?";
+                    }
+                } else {
+                    new_str += val[i];
+                    i++;
+                }
+            }
+            val = new_str;
+        }
+    }
+}
 
 struct t_macro {
     bool is_func_like;
     std::unordered_map<str, size_t> params;
-    t_lex_seq replacement;
+    t_pp_seq replacement;
 };
 
 namespace {
+    _ step(_& it) {
+        it++;
+        if ((*it).kind == "whitespace") {
+            it++;
+        }
+    }
+
+    _ expand_defined(t_pp_seq& ls, t_pp_iter i, t_pp_iter fin,
+                     const _& macros) {
+        while (i != fin) {
+            if ((*i).val == "defined") {
+                _ loc = (*i).loc;
+                _ j = i;
+                step(i);
+                _ in_parens = ((*i).val == "(");
+                if (in_parens) {
+                    step(i);
+                }
+                _ id = (*i).val;
+                if (in_parens) {
+                    step(i);
+                }
+                i++;
+                _ m_it = macros.find(id);
+                j = ls.erase(j, i);
+                if (m_it == macros.end()) {
+                    ls.insert(i, {"pp_number", "0", loc, {}});
+                } else {
+                    ls.insert(i, {"pp_number", "1", loc, {}});
+                }
+            } else {
+                i++;
+            }
+        }
+    }
+
     _ is_eof(_ i) {
         return (*i).val == "";
     }
@@ -24,8 +194,8 @@ namespace {
     }
 
     _ collect_args(_& j, _ finish) {
-        vec<t_lex_seq> res;
-        t_lex_seq arg;
+        vec<t_pp_seq> res;
+        t_pp_seq arg;
         _ paren_cnt = 0;
         _ loc = (*j).loc;
         while (true) {
@@ -74,11 +244,10 @@ namespace {
         return res;
     }
 
-    void expand(t_lex_seq& ls, t_lex_seq::iterator i,
-                t_lex_seq::iterator finish,
+    void expand(t_pp_seq& ls, t_pp_iter i, t_pp_iter finish,
                 const std::unordered_map<str, t_macro>& macros);
 
-    _ glue(t_lex_seq& ls, t_lex_seq rs) {
+    _ glue(t_pp_seq& ls, t_pp_seq rs) {
         if (ls.back().kind == "whitespace") {
             ls.pop_back();
         }
@@ -128,7 +297,7 @@ namespace {
     }
 
     void substitute(_ i, _ finish, const std::unordered_map<str, size_t>& fp,
-                    const vec<t_lex_seq>& ap, const _& hs, _& os,
+                    const vec<t_pp_seq>& ap, const _& hs, _& os,
                     const _& macros) {
         if (i == finish) {
             for (_& x : os) {
@@ -191,8 +360,7 @@ namespace {
         substitute(i, finish, fp, ap, hs, os, macros);
     }
 
-    void expand(t_lex_seq& ls, t_lex_seq::iterator i,
-                t_lex_seq::iterator finish,
+    void expand(t_pp_seq& ls, t_pp_iter i, t_pp_iter finish,
                 const std::unordered_map<str, t_macro>& macros) {
         if (i == finish) {
             return;
@@ -234,7 +402,7 @@ namespace {
                                   rparen_hs.begin(), rparen_hs.end(),
                                   std::inserter(nhs, nhs.begin()));
             nhs.insert((*i).val);
-            t_lex_seq r;
+            t_pp_seq r;
             _& mr = macro.replacement;
             substitute(mr.begin(), mr.end(), macro.params, args, nhs, r,
                        macros);
@@ -244,7 +412,7 @@ namespace {
         } else {
             _ nhs = hs;
             nhs.insert((*i).val);
-            t_lex_seq r;
+            t_pp_seq r;
             _& mr = macro.replacement;
             substitute(mr.begin(), mr.end(), {}, {}, nhs, r, macros);
             i = ls.erase(i);
@@ -252,142 +420,258 @@ namespace {
             expand(ls, i, finish, macros);
         }
     }
+
+    _ find_newline(_ it) {
+        while ((*it).kind != "newline") {
+            it++;
+        }
+        return it;
+    }
+
+    _ pp_hash(_& it) {
+        _ jt = it;
+        if ((*jt).kind == "whitespace") {
+            jt++;
+        }
+        if ((*jt).val != "#") {
+            return false;
+        }
+        step(jt);
+        it = jt;
+        return true;
+    }
+
+    _ cmd(_& it) {
+        if (not pp_hash(it)) {
+            return str();
+        }
+        _ res = (*it).val;
+        step(it);
+        return res;
+    }
 }
 
 class t_preprocessor {
-    t_lex_seq& lex_seq;
-    t_lex_seq::iterator pos;
-
+    t_pp_seq& lex_seq;
+    t_pp_iter pos;
     std::unordered_map<str, t_macro> macros;
 
-    void advance_ws() {
-        advance();
-        if (peek().kind == "whitespace") {
-            advance();
+    void advance() {
+        step(pos);
+    }
+    void skip(bool ws = true) {
+        pos = lex_seq.erase(pos);
+        if (ws and (*pos).kind == "whitespace") {
+            pos = lex_seq.erase(pos);
         }
     }
-    t_pp_lexeme& peek() {
-        return *pos;
-    }
-    void advance() {
-        pos++;
-    }
     void expect(const str& x) {
-        if (peek().kind != x) {
-            throw t_compile_error("expected " + x, peek().loc);
+        if ((*pos).kind != x) {
+            throw t_compile_error("expected " + x, (*pos).loc);
         }
     }
     void err(const str& msg) {
-        throw t_compile_error(msg, peek().loc);
-    }
-    str& val() {
-        return peek().val;
+        throw t_compile_error(msg, (*pos).loc);
     }
 
-public:
-    t_preprocessor(t_lex_seq& _lex_seq)
-        : lex_seq(_lex_seq), pos(lex_seq.begin()) {
+    _ command(const str& name, bool erase = true) {
+        _ it = pos;
+        if (not pp_hash(it)) {
+            return false;
+        }
+        if (not ((*it).kind == "identifier" and (*it).val == name)) {
+            return false;
+        }
+        step(it);
+        if (erase) {
+            pos = lex_seq.erase(pos, it);
+        } else {
+            pos = it;
+        }
+        return true;
     }
 
     _ define() {
-        advance_ws();
-        expect("identifier");
-        _& id = val();
-        advance();
+        if (not command("define")) {
+            return false;
+        }
+        _ id = (*pos).val;
+        skip(false);
         _ is_func_like = false;
         std::unordered_map<str, size_t> params;
-        if (peek().kind == "(") {
+        if ((*pos).kind == "(") {
             is_func_like = true;
-            advance_ws();
+            skip();
             size_t i = 0;
-            while (peek().kind != ")") {
+            while ((*pos).kind != ")") {
                 if (not params.empty()) {
                     expect(",");
-                    advance_ws();
+                    skip();
                 }
                 expect("identifier");
-                params[val()] = i;
-                advance_ws();
+                params[(*pos).val] = i;
+                skip();
                 i++;
             }
-            advance();
+            skip();
+        } else {
+            if ((*pos).kind == "whitespace") {
+                skip(false);
+            }
         }
-        if ((*pos).kind == "whitespace") {
-            pos++;
+        t_pp_seq replace_list;
+        while ((*pos).kind != "newline") {
+            replace_list.push_back(*pos);
+            skip(false);
         }
-        t_lex_seq replace_list;
-        while (peek().kind != "newline") {
-            replace_list.push_back(peek());
-            advance();
-        }
-        advance();
+        skip(false);
         if (not replace_list.empty()
             and replace_list.back().kind == "whitespace") {
             replace_list.pop_back();
         }
         macros[id] = {is_func_like, params, replace_list};
+        return true;
     }
 
     _ undef() {
-        advance_ws();
-        expect("identifier");
-        _& id = val();
-        macros.erase(id);
-        advance_ws();
-        expect("newline");
-        advance();
+        if (not command("undef")) {
+            return false;
+        }
+        macros.erase((*pos).val);
+        skip();
+        skip();
+        return true;
     }
 
-    _ directive() {
-        _ line_begin = pos;
-        advance_ws();
-        expect("identifier");
-        _& cmd = val();
-        if (cmd == "define") {
-            define();
-        } else if (cmd == "undef") {
-            undef();
-        } else if (cmd == "include") {
-            while (peek().kind != "newline") {
-                advance();
-            }
-            advance();
+    _ simple_lines() {
+        _ it = pos;
+        if (is_eof(it) or pp_hash(it)) {
+            return false;
         }
-        lex_seq.erase(line_begin, pos);
+        while (not is_eof(it)) {
+            _ jt = it;
+            if (pp_hash(jt)) {
+                break;
+            }
+            it = find_newline(it);
+            it++;
+        }
+        expand(lex_seq, pos, it, macros);
+        pos = it;
+        return true;
+    }
+
+    _ include() {
+        if (not command("include")) {
+            return false;
+        }
+        while ((*pos).kind != "newline") {
+            skip(false);
+        }
+        return true;
+    }
+
+    _ empty_directive() {
+        if (not command("\n")) {
+            return false;
+        }
+        return true;
+    }
+
+    _ control_line() {
+        return include() or define() or undef() or empty_directive();
+    }
+
+    _ if_group() {
+        _ line_begin = pos;
+        if (not command("if", false)) {
+            return false;
+        }
+        _ line_end = find_newline(pos);
+        pos--;
+        expand_defined(lex_seq, next(pos), line_end, macros);
+        expand(lex_seq, next(pos), line_end, macros);
+        pos++;
+        escape_seqs(pos, line_end);
+        for (_ it = pos; it != line_end; it++) {
+            if ((*it).kind == "identifier") {
+                (*it).kind = "pp_number";
+                (*it).val = "0";
+            }
+        }
+        _ exp_ls = convert_lexemes(pos, line_end);
+        exp_ls.push_back({"eof", "", (*line_end).loc});
+        _ exp_ast = parse_exp(exp_ls.begin());
+        t_ctx exp_ctx;
+        _ val = gen_exp(exp_ast, exp_ctx);
+        _ cond_is_true = (val.u_val() != 0);
+        pos = lex_seq.erase(line_begin, line_end);
+        skip(false);
+        if (cond_is_true) {
+            group();
+        } else {
+            _ block_begin = pos;
+            _ level = 0;
+            while (true) {
+                _ i = pos;
+                _ cmd_ = cmd(i);
+                if (cmd_ == "if") {
+                    level++;
+                } else if (cmd_ == "endif") {
+                    if (level == 0) {
+                        break;
+                    } else {
+                        level--;
+                    }
+                }
+                pos = find_newline(pos);
+                pos++;
+            }
+            lex_seq.erase(block_begin, pos);
+        }
+        return true;
+    }
+
+    _ endif_line() {
+        if (command("endif")) {
+            return false;
+        }
+        skip();
+        return true;
+    }
+
+    _ if_section() {
+        if (not if_group()) {
+            return false;
+        }
+        // while (elif_group()) {
+        // }
+        // else_group();
+        endif_line();
+        return true;
+    }
+
+    _ group_part() {
+        return if_section() or control_line() or simple_lines();
+    }
+
+public:
+    t_preprocessor(t_pp_seq& ls)
+        : lex_seq(ls), pos(ls.begin()) {
+    }
+
+    void group() {
+        while (group_part()) {
+        }
     }
 
     void scan() {
-        while (not is_eof(pos)) {
-            _ i1 = pos;
-            if ((*i1).kind == "whitespace") {
-                i1++;
-            }
-            if ((*i1).val == "#") {
-                pos = i1;
-                directive();
-            } else {
-                _ k = pos;
-                while (not is_eof(k)) {
-                    if (k != lex_seq.begin() and (*k).val == "#") {
-                        _ l = std::next(k, -1);
-                        if (l != lex_seq.begin()
-                            and (*l).kind == "whitespace") {
-                            l--;
-                        }
-                        if ((*l).val == "\n") {
-                            break;
-                        }
-                    }
-                    k++;
-                }
-                expand(lex_seq, pos, k, macros);
-                pos = k;
-            }
-        }
+        group();
+        expect("eof");
     }
 };
 
-void preprocess(t_lex_seq& ls) {
+void preprocess(t_pp_seq& ls) {
     _ pp = t_preprocessor(ls);
     pp.scan();
 }
