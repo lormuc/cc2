@@ -44,7 +44,17 @@ std::list<t_lexeme> convert_lexemes(t_pp_c_iter it, t_pp_c_iter fin) {
     return res;
 }
 
+_ print_line(t_pp_iter pos) {
+    cout << "`";
+    while ((*pos).kind != "newline") {
+        cout << (*pos).val;
+        pos++;
+    }
+    cout << "`\n";
+}
+
 namespace {
+
     _ match(const str& s0, _& idx, const str& s1) {
         if (s0.compare(idx, s1.length(), s1) == 0) {
             idx += s1.length();
@@ -153,6 +163,43 @@ namespace {
         }
     }
 
+    _ expect(const str& kind, t_pp_iter it) {
+        if ((*it).kind != kind) {
+            throw t_compile_error("expected " + kind, (*it).loc);
+        }
+    }
+
+    _ is_eof(_ i) {
+        return (*i).val == "";
+    }
+
+    _ skip_ws(_ i, _ fin) {
+        if (i != fin and (*i).kind == "whitespace") {
+            i++;
+        }
+        return i;
+    }
+
+    _ find_newline(_ it) {
+        while ((*it).kind != "newline") {
+            it++;
+        }
+        return it;
+    }
+
+    _ pp_hash(_& it) {
+        _ jt = it;
+        if ((*jt).kind == "whitespace") {
+            jt++;
+        }
+        if ((*jt).val != "#") {
+            return false;
+        }
+        step(jt);
+        it = jt;
+        return true;
+    }
+
     t_pp_iter expand_defined(t_pp_seq& ls, t_pp_iter i, t_pp_iter fin,
                              const _& macros) {
         _ new_i = i;
@@ -166,6 +213,10 @@ namespace {
                 if (in_parens) {
                     step(i);
                 }
+                if ((*i).kind != "identifier") {
+                    throw t_compile_error("expected identifier", (*i).loc);
+                }
+                expect("identifier", i);
                 _ id = (*i).val;
                 if (in_parens) {
                     step(i);
@@ -184,17 +235,6 @@ namespace {
             initial = false;
         }
         return new_i;
-    }
-
-    _ is_eof(_ i) {
-        return (*i).val == "";
-    }
-
-    _ skip_ws(_ i, _ fin) {
-        if (i != fin and (*i).kind == "whitespace") {
-            i++;
-        }
-        return i;
     }
 
     _ collect_args(_& j, _ finish) {
@@ -422,36 +462,7 @@ namespace {
         }
     }
 
-    _ find_newline(_ it) {
-        while ((*it).kind != "newline") {
-            it++;
-        }
-        return it;
-    }
-
-    _ pp_hash(_& it) {
-        _ jt = it;
-        if ((*jt).kind == "whitespace") {
-            jt++;
-        }
-        if ((*jt).val != "#") {
-            return false;
-        }
-        step(jt);
-        it = jt;
-        return true;
-    }
-
-    _ cmd(_& it) {
-        if (not pp_hash(it)) {
-            return str();
-        }
-        _ res = (*it).val;
-        step(it);
-        return res;
-    }
-
-    _ eval_condition(t_pp_seq& ls, t_pp_iter pos, t_pp_iter line_end,
+    _ eval_condition(t_pp_seq& ls, t_pp_iter& pos, t_pp_iter line_end,
                      const _& macros) {
         if (pos == line_end) {
             return true;
@@ -479,25 +490,24 @@ class t_preprocessor {
     t_pp_iter pos;
     std::unordered_map<str, t_macro> macros;
 
-    void advance() {
-        step(pos);
-    }
     void skip(bool ws = true) {
         pos = lex_seq.erase(pos);
         if (ws and (*pos).kind == "whitespace") {
             pos = lex_seq.erase(pos);
         }
     }
-    void expect(const str& x) {
-        if ((*pos).kind != x) {
-            throw t_compile_error("expected " + x, (*pos).loc);
-        }
+    void skip_newline() {
+        expect("newline", pos);
+        pos = lex_seq.erase(pos);
     }
-    void err(const str& msg) {
-        throw t_compile_error(msg, (*pos).loc);
+    void skip_until_next_line() {
+        while ((*pos).kind != "newline") {
+            skip();
+        }
+        pos = lex_seq.erase(pos);
     }
 
-    _ command(const str& name, bool erase = true) {
+    _ command(const str& name) {
         _ it = pos;
         if (not pp_hash(it)) {
             return false;
@@ -506,11 +516,25 @@ class t_preprocessor {
             return false;
         }
         step(it);
-        if (erase) {
-            pos = lex_seq.erase(pos, it);
-        } else {
-            pos = it;
+        pos = lex_seq.erase(pos, it);
+        return true;
+    }
+
+    _ simple_lines() {
+        _ it = pos;
+        if (is_eof(it) or pp_hash(it)) {
+            return false;
         }
+        while (not is_eof(it)) {
+            _ jt = it;
+            if (pp_hash(jt)) {
+                break;
+            }
+            it = find_newline(it);
+            it++;
+        }
+        pos = expand(lex_seq, pos, it, macros);
+        pos = it;
         return true;
     }
 
@@ -518,6 +542,7 @@ class t_preprocessor {
         if (not command("define")) {
             return false;
         }
+        expect("identifier", pos);
         _ id = (*pos).val;
         skip(false);
         _ is_func_like = false;
@@ -526,15 +551,18 @@ class t_preprocessor {
             is_func_like = true;
             skip();
             size_t i = 0;
-            while ((*pos).kind != ")") {
+            while ((*pos).kind != "newline" and (*pos).kind != ")") {
                 if (not params.empty()) {
-                    expect(",");
+                    expect(",", pos);
                     skip();
                 }
-                expect("identifier");
+                expect("identifier", pos);
                 params[(*pos).val] = i;
                 skip();
                 i++;
+            }
+            if ((*pos).kind == "newline") {
+                expect(")", pos);
             }
             skip();
         } else {
@@ -560,27 +588,10 @@ class t_preprocessor {
         if (not command("undef")) {
             return false;
         }
+        expect("identifier", pos);
         macros.erase((*pos).val);
         skip();
-        skip();
-        return true;
-    }
-
-    _ simple_lines() {
-        _ it = pos;
-        if (is_eof(it) or pp_hash(it)) {
-            return false;
-        }
-        while (not is_eof(it)) {
-            _ jt = it;
-            if (pp_hash(jt)) {
-                break;
-            }
-            it = find_newline(it);
-            it++;
-        }
-        pos = expand(lex_seq, pos, it, macros);
-        pos = it;
+        skip_newline();
         return true;
     }
 
@@ -588,21 +599,46 @@ class t_preprocessor {
         if (not command("include")) {
             return false;
         }
-        while ((*pos).kind != "newline") {
-            skip(false);
-        }
+        skip_until_next_line();
         return true;
     }
 
     _ empty_directive() {
-        if (not command("\n")) {
+        _ it = pos;
+        if (not pp_hash(it)) {
             return false;
         }
+        if ((*it).val != "\n") {
+            return false;
+        }
+        pos = lex_seq.erase(pos, it);
+        skip_newline();
         return true;
     }
 
-    _ control_line() {
-        return include() or define() or undef() or empty_directive();
+    _ pragma() {
+        if (not command("pragma")) {
+            return false;
+        }
+        skip_until_next_line();
+        return true;
+    }
+
+    _ error() {
+        if (not command("error")) {
+            return false;
+        }
+        _ loc = (*pos).loc;
+        str msg;
+        while ((*pos).kind != "newline") {
+            if (msg != "") {
+                msg += " ";
+            }
+            msg += (*pos).val;
+            skip();
+        }
+        throw t_compile_error(msg, loc);
+        return true;
     }
 
     _ if_block(bool cond_is_true) {
@@ -613,15 +649,17 @@ class t_preprocessor {
             _ level = 0;
             while (true) {
                 _ i = pos;
-                _ cmd_ = cmd(i);
-                if (cmd_ == "if" or cmd_ == "ifdef" or cmd_ == "ifndef") {
-                    level++;
-                } else if (cmd_ == "endif" or cmd_ == "elif"
-                           or cmd_ == "else") {
-                    if (level == 0) {
-                        break;
-                    } else if (cmd_ == "endif") {
-                        level--;
+                if (pp_hash(i)) {
+                    _ cmd_ = (*i).val;
+                    if (cmd_ == "if" or cmd_ == "ifdef" or cmd_ == "ifndef") {
+                        level++;
+                    } else if (cmd_ == "endif" or cmd_ == "elif"
+                               or cmd_ == "else") {
+                        if (level == 0) {
+                            break;
+                        } else if (cmd_ == "endif") {
+                            level--;
+                        }
                     }
                 }
                 pos = find_newline(pos);
@@ -631,10 +669,10 @@ class t_preprocessor {
         }
     }
 
-    _ if_aux(bool& found_true, t_pp_iter line_begin, t_pp_iter line_end) {
+    _ if_aux(bool& found_true, t_pp_iter line_end) {
         _ cond_is_true = (not found_true
                           and eval_condition(lex_seq, pos, line_end, macros));
-        pos = lex_seq.erase(line_begin, line_end);
+        pos = lex_seq.erase(pos, line_end);
         skip(false);
         if_block(cond_is_true);
         if (cond_is_true) {
@@ -643,61 +681,63 @@ class t_preprocessor {
     }
 
     _ if_group(bool& found_true) {
-        _ line_begin = pos;
-        if (command("if", false)) {
-        } else if (command("ifdef", false)) {
+        if (command("if")) {
+        } else if (command("ifdef")) {
             pos = lex_seq.insert(pos, {"identifier", "defined"});
-        } else if (command("ifndef", false)) {
+        } else if (command("ifndef")) {
             pos = lex_seq.insert(pos, {"identifier", "defined"});
             pos = lex_seq.insert(pos, {"!", "!"});
         } else {
             return false;
         }
         _ line_end = find_newline(pos);
-        if_aux(found_true, line_begin, line_end);
+        if_aux(found_true, line_end);
         return true;
     }
 
     _ elif_group(bool& found_true) {
-        _ line_begin = pos;
-        if (not command("elif", false)) {
+        if (not command("elif")) {
             return false;
         }
         _ line_end = find_newline(pos);
-        if_aux(found_true, line_begin, line_end);
+        if_aux(found_true, line_end);
         return true;
     }
 
     _ else_group(bool& found_true) {
-        _ line_begin = pos;
-        if (not command("else", false)) {
+        if (not command("else")) {
             return false;
         }
-        if_aux(found_true, line_begin, pos);
+        if_aux(found_true, pos);
         return true;
     }
 
     _ endif_line() {
-        if (command("endif")) {
+        if (not command("endif")) {
             return false;
         }
-        skip();
+        skip_newline();
         return true;
     }
 
     _ if_section() {
+        _ if_loc = (*pos).loc;
         _ found_true = false;
         if (not if_group(found_true)) {
             return false;
         }
-        cout << "found_true = " << found_true << "\n";
         while (elif_group(found_true)) {
-            cout << "found_true = " << found_true << "\n";
         }
-        cout << "found_true = " << found_true << "\n";
         else_group(found_true);
-        endif_line();
+        if (not endif_line()) {
+            throw t_compile_error("unterminated #if", if_loc);
+        }
         return true;
+    }
+
+    _ control_line() {
+        return (include() or define() or undef() or error() or pragma()
+                or empty_directive());
     }
 
     _ group_part() {
@@ -716,7 +756,7 @@ public:
 
     void scan() {
         group();
-        expect("eof");
+        expect("eof", pos);
     }
 };
 
