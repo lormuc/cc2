@@ -112,14 +112,15 @@ namespace {
     _ apply_rule(_ rule, const str& rule_name) {
         if (debug) {
             _ loc = peek().loc;
-            cout << loc.line << ":" << loc.column << " " << rule_name << "\n";
+            cout << loc.line() << ":" << loc.column();
+            cout << " " << rule_name << "\n";
         }
         _ old_state = get_state();
         try {
             return rule();
         } catch (const t_parse_error& e) {
             set_state(old_state);
-            if (e.get_loc() == peek().loc) {
+            if (e.loc() == peek().loc) {
                 throw t_parse_error("expected " + rule_name, peek().loc);
             } else {
                 throw;
@@ -138,7 +139,7 @@ namespace {
         try {
             return x();
         } catch (t_parse_error err) {
-            if (err.get_loc() > max_err.get_loc()) {
+            if (err.loc() != max_err.loc()) {
                 max_err = err;
             }
             return or_aux(max_err, args ...);

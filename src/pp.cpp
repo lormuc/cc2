@@ -1,10 +1,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <cassert>
+#include <ctime>
 
 #include "pp.hpp"
 #include "ast.hpp"
 #include "exp.hpp"
+
+namespace {
+    _ unwrap(const str& x) {
+        return x.substr(1, x.length() - 2);
+    }
+}
 
 std::list<t_lexeme> convert_lexemes(t_pp_c_iter it, t_pp_c_iter fin) {
     static const std::unordered_set<str> keywords = {
@@ -37,7 +44,7 @@ std::list<t_lexeme> convert_lexemes(t_pp_c_iter it, t_pp_c_iter fin) {
                 kind = "integer_constant";
             }
         } else if (kind == "char_constant" or kind == "string_literal") {
-            val = val.substr(1, val.length() - 2);
+            val = unwrap(val);
         }
         res.push_back({kind, val, (*it).loc});
     }
@@ -54,7 +61,6 @@ _ print_line(t_pp_iter pos) {
 }
 
 namespace {
-
     _ match(const str& s0, _& idx, const str& s1) {
         if (s0.compare(idx, s1.length(), s1) == 0) {
             idx += s1.length();
@@ -149,10 +155,78 @@ void escape_seqs(t_pp_iter it, t_pp_iter fin) {
     }
 }
 
+namespace {
+    _ str_lit(const str& x) {
+        str res;
+        for (_ ch : x) {
+            if (ch == '\\') {
+                res += "\\\\";
+            } else if (ch == '"') {
+                res += "\\\"";
+            } else {
+                res += ch;
+            }
+        }
+        return res;
+    }
+}
+
 struct t_macro {
-    bool is_func_like;
-    std::unordered_map<str, size_t> params;
     t_pp_seq replacement;
+    bool is_func_like = false;
+    std::unordered_map<str, size_t> params = {};
+};
+
+struct t_macros_find_result {
+    bool success;
+    t_macro macro = t_macro();
+};
+
+class t_macros {
+    std::unordered_map<str, t_macro> macros;
+
+public:
+    void erase(const t_pp_lexeme& lx) {
+        macros.erase(lx.val);
+    }
+
+    void put(const str& id, bool is_func_like,
+             const std::unordered_map<str, size_t>& params,
+             const t_pp_seq& replace_list) {
+        macros[id] = {replace_list, is_func_like, params};
+    }
+
+    t_macros_find_result find(const t_pp_lexeme& lx) const {
+        _ it = macros.find(lx.val);
+        if (it != macros.end()) {
+            return t_macros_find_result{true, (*it).second};
+        }
+        _& id = lx.val;
+        str val;
+        if (id == "__LINE__") {
+            val = std::to_string(lx.loc.line());
+        } else if (id == "__STDC__") {
+            val = "1";
+        } else if (id == "__FILE__") {
+            val = "\"" + str_lit(lx.loc.filename()) + "\"";
+        } else if (id == "__TIME__") {
+            _ raw_time = std::time(0);
+            _ ti = std::localtime(&raw_time);
+            char buf[64];
+            strftime(buf, sizeof(buf), "%T", ti);
+            val = "\"" + str(buf) + "\"";
+        } else if (id == "__DATE__") {
+            _ raw_time = std::time(0);
+            _ ti = std::localtime(&raw_time);
+            char buf[64];
+            strftime(buf, sizeof(buf), "%b %e %Y", ti);
+            val = "\"" + str(buf) + "\"";
+        } else {
+            return t_macros_find_result{false};
+        }
+        _ res_lx = t_pp_lexeme{pp_kind(val), val, lx.loc};
+        return t_macros_find_result{true, {{res_lx}}};
+    }
 };
 
 namespace {
@@ -164,9 +238,7 @@ namespace {
     }
 
     _ expect(const str& kind, t_pp_iter it) {
-        if ((*it).kind != kind) {
-            throw t_compile_error("expected " + kind, (*it).loc);
-        }
+        constrain((*it).kind == kind, "expected " + kind, (*it).loc);
     }
 
     _ is_eof(_ i) {
@@ -213,17 +285,14 @@ namespace {
                 if (in_parens) {
                     step(i);
                 }
-                if ((*i).kind != "identifier") {
-                    throw t_compile_error("expected identifier", (*i).loc);
-                }
                 expect("identifier", i);
-                _ id = (*i).val;
+                _ id = *i;
                 if (in_parens) {
                     step(i);
                 }
                 i++;
-                _ m_it = macros.find(id);
-                _ is_defined_str = str((m_it == macros.end()) ? "0" : "1");
+                _ macro_find_res = macros.find(id);
+                _ is_defined_str = str(macro_find_res.success ? "1" : "0");
                 j = ls.erase(j, i);
                 _ k = ls.insert(i, {"pp_number", is_defined_str, loc, {}});
                 if (initial) {
@@ -243,9 +312,7 @@ namespace {
         _ paren_cnt = 0;
         _ loc = (*j).loc;
         while (true) {
-            if (j == finish) {
-                throw t_compile_error("unmatched (", loc);
-            }
+            constrain(j != finish, "unmatched (", loc);
             _& lx = (*j).kind;
             if (lx == ")" and paren_cnt == 0) {
                 if (not arg.empty()) {
@@ -289,7 +356,7 @@ namespace {
     }
 
     t_pp_iter expand(t_pp_seq& ls, t_pp_iter i, t_pp_iter finish,
-                     const std::unordered_map<str, t_macro>& macros);
+                     const t_macros& macros);
 
     _ glue(t_pp_seq& ls, t_pp_seq rs) {
         if (ls.back().kind == "whitespace") {
@@ -311,7 +378,7 @@ namespace {
         ls.splice(ls.end(), rs);
     }
 
-    _ stringize(_ ls) {
+    _ stringize(t_pp_seq ls) {
         if (not ls.empty() and ls.back().kind == "whitespace") {
             ls.pop_back();
         }
@@ -323,15 +390,7 @@ namespace {
         val += "\"";
         for (_& lx : ls) {
             if (lx.kind == "char_constant" or lx.kind == "string_literal") {
-                for (_ ch : lx.val) {
-                    if (ch == '\\') {
-                        val += "\\\\";
-                    } else if (ch == '"') {
-                        val += "\\\"";
-                    } else {
-                        val += ch;
-                    }
-                }
+                val += str_lit(lx.val);
             } else {
                 val += lx.val;
             }
@@ -366,11 +425,9 @@ namespace {
             _ i1 = skip_ws(next(i), finish);
             if (i1 != finish) {
                 _ p_it = fp.find((*i1).val);
-                if (os.empty()) {
-                    throw t_compile_error("## cannot occur at the beginning or"
-                                          " at the end of a replacement list",
-                                          (*i).loc);
-                }
+                constrain(not os.empty(),
+                          "## cannot occur at the beginning or at the end of "
+                          "a replacement list", (*i).loc);
                 if (p_it != fp.end()) {
                     _ idx = (*p_it).second;
                     glue(os, ap[idx]);
@@ -405,7 +462,7 @@ namespace {
     }
 
     t_pp_iter expand(t_pp_seq& ls, t_pp_iter i, t_pp_iter finish,
-                     const std::unordered_map<str, t_macro>& macros) {
+                     const t_macros& macros) {
         if (i == finish) {
             return i;
         }
@@ -414,12 +471,12 @@ namespace {
             expand(ls, next(i), finish, macros);
             return i;
         }
-        _ macro_it = macros.find((*i).val);
-        if (macro_it == macros.end()) {
+        _ macro_find_res = macros.find(*i);
+        if (not macro_find_res.success) {
             expand(ls, next(i), finish, macros);
             return i;
         }
-        _& macro = (*macro_it).second;
+        _& macro = macro_find_res.macro;
         if (macro.is_func_like) {
             _ j = i;
             j++;
@@ -433,9 +490,8 @@ namespace {
             }
             j++;
             _ args = collect_args(j, finish);
-            if (macro.params.size() != args.size()) {
-                throw t_compile_error("wrong number of arguments", (*i).loc);
-            }
+            constrain(macro.params.size() == args.size(),
+                      "wrong number of arguments", (*i).loc);
             _& rparen_hs = (*j).hide_set;
             j++;
             std::set<str> nhs;
@@ -488,7 +544,7 @@ namespace {
 class t_preprocessor {
     t_pp_seq& lex_seq;
     t_pp_iter pos;
-    std::unordered_map<str, t_macro> macros;
+    t_macros macros;
 
     void skip(bool ws = true) {
         pos = lex_seq.erase(pos);
@@ -544,6 +600,8 @@ class t_preprocessor {
         }
         expect("identifier", pos);
         _ id = (*pos).val;
+        constrain(id != "defined",
+                  "'defined' cannot be used as a a macro name", (*pos).loc);
         skip(false);
         _ is_func_like = false;
         std::unordered_map<str, size_t> params;
@@ -580,7 +638,7 @@ class t_preprocessor {
             and replace_list.back().kind == "whitespace") {
             replace_list.pop_back();
         }
-        macros[id] = {is_func_like, params, replace_list};
+        macros.put(id, is_func_like, params, replace_list);
         return true;
     }
 
@@ -589,7 +647,7 @@ class t_preprocessor {
             return false;
         }
         expect("identifier", pos);
-        macros.erase((*pos).val);
+        macros.erase(*pos);
         skip();
         skip_newline();
         return true;
@@ -647,7 +705,7 @@ class t_preprocessor {
         } else {
             _ block_begin = pos;
             _ level = 0;
-            while (true) {
+            while (not is_eof(pos)) {
                 _ i = pos;
                 if (pp_hash(i)) {
                     _ cmd_ = (*i).val;
@@ -729,9 +787,7 @@ class t_preprocessor {
         while (elif_group(found_true)) {
         }
         else_group(found_true);
-        if (not endif_line()) {
-            throw t_compile_error("unterminated #if", if_loc);
-        }
+        constrain(endif_line(), "unterminated #if", if_loc);
         return true;
     }
 

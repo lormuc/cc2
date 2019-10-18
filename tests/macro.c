@@ -29,4 +29,7 @@ int main() {
     pr( ff(str(s("abc\0d", "abc", '\4') == 0) str(: @\n), s) );
     pr( glue(HIGH, LOW) );
     pr( xglue(HIGH, LOW) );
+    printf("%d\n", __LINE__);
+    printf("%s\n", __FILE__);
+    printf("%d\n", __STDC__);
 }

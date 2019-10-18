@@ -27,3 +27,9 @@ void print_bytes(const str& s, std::ostream& os) {
         }
     }
 }
+
+void constrain(bool constraint, const str& msg, const t_loc& loc) {
+    if (not constraint) {
+        throw t_compile_error(msg, loc);
+    }
+}

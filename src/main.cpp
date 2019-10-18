@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
     }
 
     std::ifstream is(input_file);
-    is.good() or die("could not open input file");
+    is.good() or die("could not open '" + input_file + "'");
 
     std::ofstream log;
     log.open("log.txt");
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         _ phase_cnt = 0;
 
         title("lex", log);
-        _ pp_ls = lex(src);
+        _ pp_ls = lex(input_file, src);
         phase_cnt++;
         print(pp_ls, log);
         separator(log);
@@ -178,19 +178,21 @@ int main(int argc, char** argv) {
         os.good() or die("could not open output file");
         os << res;
     } catch (const t_compile_error& e) {
-        _ is_loc_valid = (e.get_loc() != t_loc());
+        _& loc = e.loc();
+        _ is_loc_valid = loc.is_valid();
         if (is_loc_valid) {
-            std::cerr << (e.line() + 1) << ":" << (e.column() + 1) << ": ";
+            std::cerr << loc.filename() << ":";
+            std::cerr << loc.line() << ":" << loc.column() << ": ";
         }
         std::cerr << "error: ";
         std::cerr << e.what() << "\n";
         if (is_loc_valid) {
-            _ i = get_line_pos(src, e.line());
+            _ i = get_line_pos(src, loc.line() - 1);
             for (_ j = i; j < src.size() and src[j] != '\n'; j++) {
                 std::cerr << src[j];
             }
             std::cerr << "\n";
-            for (_ j = 0; j < e.column(); j++) {
+            for (_ j = 0; j < loc.column(); j++) {
                 std::cerr << " ";
             }
             std::cerr << "^";

@@ -74,6 +74,7 @@ str pp_kind(const str& val) {
 
 class t_lexer {
     const str& src;
+    const str& filename;
     size_t idx;
     t_loc cur_loc;
     t_loc lexeme_loc;
@@ -108,11 +109,7 @@ class t_lexer {
     }
     _ advance_real() {
         idx++;
-        cur_loc.column++;
-        if (src[idx-1] == '\n') {
-            cur_loc.line++;
-            cur_loc.column = 0;
-        }
+        cur_loc.inc(src[idx-1] == '\n');
     }
     str advance(int d = 1) {
         str res;
@@ -340,16 +337,17 @@ public:
     std::list<t_pp_lexeme> get_result() {
         return std::move(result);
     }
-    t_lexer(const str& _src)
+    t_lexer(const str& _filename, const str& _src)
         : src(_src)
+        , filename(_filename)
         , idx(0)
-        , cur_loc(0, 0)
+        , cur_loc(filename, 1, 0)
         , lexeme_loc(cur_loc) {
     }
 };
 
-std::list<t_pp_lexeme> lex(const str& src) {
-    t_lexer lexer(src);
+std::list<t_pp_lexeme> lex(const str& filename, const str& src) {
+    t_lexer lexer(filename, src);
     lexer.go();
     return lexer.get_result();
 }

@@ -13,7 +13,7 @@ struct t_pp_lexeme {
     std::set<str> hide_set = {};
 };
 
-std::list<t_pp_lexeme> lex(const str&);
+std::list<t_pp_lexeme> lex(const str&, const str&);
 void print(const std::list<t_pp_lexeme>& ls, std::ostream& os,
            const str& separator = "");
 str pp_kind(const str&);
