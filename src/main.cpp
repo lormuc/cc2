@@ -99,6 +99,8 @@ _ concatenate_string_literals(std::list<t_pp_lexeme>& ls) {
 }
 
 int main(int argc, char** argv) {
+    _ log = std::ofstream("log.txt");
+
     str input_file;
     str output_file = "o.ll";
     _ phase = -1;
@@ -114,18 +116,19 @@ int main(int argc, char** argv) {
         die("incorrect usage");
     }
 
-    std::ifstream is(input_file);
-    is.good() or die("could not open '" + input_file + "'");
-
-    std::ofstream log;
-    log.open("log.txt");
-    _ src = read_file_into_string(is);
+    _ fm = t_file_manager();
+    size_t input_file_idx;
+    try {
+        input_file_idx = fm.read_file(input_file);
+    } catch (const std::ifstream::failure& e) {
+        die(input_file + ": " + e.what());
+    }
 
     try {
         _ phase_cnt = 0;
 
         title("lex", log);
-        _ pp_ls = lex(input_file, src);
+        _ pp_ls = lex(input_file_idx, fm);
         phase_cnt++;
         print(pp_ls, log);
         separator(log);
@@ -136,7 +139,7 @@ int main(int argc, char** argv) {
         }
 
         title("preprocess", log);
-        preprocess(pp_ls);
+        preprocess(pp_ls, fm);
         phase_cnt++;
         print(pp_ls, log);
         separator(log);
@@ -178,10 +181,11 @@ int main(int argc, char** argv) {
         os.good() or die("could not open output file");
         os << res;
     } catch (const t_compile_error& e) {
+        _ src = fm.get_file_contents(e.loc().file_idx());
         _& loc = e.loc();
         _ is_loc_valid = loc.is_valid();
         if (is_loc_valid) {
-            std::cerr << loc.filename() << ":";
+            std::cerr << fm.get_path(e.loc().file_idx()) << ":";
             std::cerr << loc.line() << ":" << loc.column() << ": ";
         }
         std::cerr << "error: ";

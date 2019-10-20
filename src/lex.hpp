@@ -5,6 +5,7 @@
 #include <ostream>
 
 #include "misc.hpp"
+#include "file.hpp"
 
 struct t_pp_lexeme {
     str kind;
@@ -13,7 +14,7 @@ struct t_pp_lexeme {
     std::set<str> hide_set = {};
 };
 
-std::list<t_pp_lexeme> lex(const str&, const str&);
+std::list<t_pp_lexeme> lex(size_t, const t_file_manager& fm);
 void print(const std::list<t_pp_lexeme>& ls, std::ostream& os,
            const str& separator = "");
 str pp_kind(const str&);

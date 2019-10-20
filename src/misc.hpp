@@ -17,19 +17,19 @@ template<class t>
 using vec = std::vector<t>;
 
 class t_loc {
-    str _filename;
+    size_t _file_idx;
     int _line;
     int _column;
 public:
     bool operator==(const t_loc& x) const {
-        return (_filename == x._filename
+        return (_file_idx == x._file_idx
                 and _line == x._line and _column == x._column);
     }
     bool operator!=(const t_loc& x) const {
         return !(*this == x);
     }
-    t_loc(const str& filename_ = "", int line_ = 1, int column_ = 0)
-        : _filename(filename_)
+    t_loc(size_t file_idx_ = -1, int line_ = 1, int column_ = 0)
+        : _file_idx(file_idx_)
         , _line(line_)
         , _column(column_) {
     }
@@ -39,8 +39,8 @@ public:
     int column() const {
         return _column;
     }
-    const str& filename() const {
-        return _filename;
+    size_t file_idx() const {
+        return _file_idx;
     }
     void inc(bool newline) {
         if (newline) {
@@ -51,7 +51,7 @@ public:
         }
     }
     bool is_valid() const {
-        return _filename != "";
+        return _file_idx != size_t(-1);
     }
 };
 
@@ -72,5 +72,4 @@ auto has(const vec<t>& c, const t& e) {
 }
 
 void constrain(bool, const str&, const t_loc&);
-str read_file_into_string(std::ifstream&);
 void print_bytes(const str&, std::ostream&);

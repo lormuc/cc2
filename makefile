@@ -1,5 +1,5 @@
 target = build/program
-lib = -lm
+lib = -lm -lstdc++fs
 cc = g++
 ext = .cpp
 hdr_ext = .hpp

@@ -74,7 +74,6 @@ str pp_kind(const str& val) {
 
 class t_lexer {
     const str& src;
-    const str& filename;
     size_t idx;
     t_loc cur_loc;
     t_loc lexeme_loc;
@@ -337,17 +336,16 @@ public:
     std::list<t_pp_lexeme> get_result() {
         return std::move(result);
     }
-    t_lexer(const str& _filename, const str& _src)
-        : src(_src)
-        , filename(_filename)
+    t_lexer(size_t file_idx, const t_file_manager& fm)
+        : src(fm.get_file_contents(file_idx))
         , idx(0)
-        , cur_loc(filename, 1, 0)
+        , cur_loc(file_idx, 1, 0)
         , lexeme_loc(cur_loc) {
     }
 };
 
-std::list<t_pp_lexeme> lex(const str& filename, const str& src) {
-    t_lexer lexer(filename, src);
+std::list<t_pp_lexeme> lex(size_t file_idx, const t_file_manager& fm) {
+    t_lexer lexer(file_idx, fm);
     lexer.go();
     return lexer.get_result();
 }

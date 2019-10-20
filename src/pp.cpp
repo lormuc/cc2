@@ -6,6 +6,7 @@
 #include "pp.hpp"
 #include "ast.hpp"
 #include "exp.hpp"
+#include "lex.hpp"
 
 namespace {
     _ unwrap(const str& x) {
@@ -184,8 +185,13 @@ struct t_macros_find_result {
 
 class t_macros {
     std::unordered_map<str, t_macro> macros;
+    const t_file_manager& file_manager;
 
 public:
+    t_macros(const t_file_manager& file_manager_)
+        : file_manager(file_manager_) {
+    }
+
     void erase(const t_pp_lexeme& lx) {
         macros.erase(lx.val);
     }
@@ -208,7 +214,8 @@ public:
         } else if (id == "__STDC__") {
             val = "1";
         } else if (id == "__FILE__") {
-            val = "\"" + str_lit(lx.loc.filename()) + "\"";
+            _ path = file_manager.get_path(lx.loc.file_idx());
+            val = "\"" + str_lit(path) + "\"";
         } else if (id == "__TIME__") {
             _ raw_time = std::time(0);
             _ ti = std::localtime(&raw_time);
@@ -545,6 +552,7 @@ class t_preprocessor {
     t_pp_seq& lex_seq;
     t_pp_iter pos;
     t_macros macros;
+    const t_file_manager& file_manager;
 
     void skip(bool ws = true) {
         pos = lex_seq.erase(pos);
@@ -801,8 +809,11 @@ class t_preprocessor {
     }
 
 public:
-    t_preprocessor(t_pp_seq& ls)
-        : lex_seq(ls), pos(ls.begin()) {
+    t_preprocessor(t_pp_seq& ls, const t_file_manager& file_manager_)
+        : lex_seq(ls)
+        , pos(ls.begin())
+        , macros(file_manager_)
+        , file_manager(file_manager_) {
     }
 
     void group() {
@@ -816,7 +827,7 @@ public:
     }
 };
 
-void preprocess(t_pp_seq& ls) {
-    _ pp = t_preprocessor(ls);
+void preprocess(t_pp_seq& ls, const t_file_manager& fm) {
+    _ pp = t_preprocessor(ls, fm);
     pp.scan();
 }

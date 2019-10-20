@@ -57,28 +57,26 @@ namespace {
                                unqualify(y.type().pointee_type())));
     }
 
-    void gen_arithmetic_conversions(t_val& x, t_val& y, const t_ctx& ctx) {
-        _ promote = [&](_& t) {
-            if (y.type() == t) {
-                x = gen_conversion(t, x, ctx);
-                return;
-            }
-            if (x.type() == t) {
-                y = gen_conversion(t, y, ctx);
-                return;
-            }
+    t_type common_arithmetic_type(t_type aa, t_type bb) {
+        _ types = std::vector{
+            long_double_type, double_type, float_type,
+            u_long_type, long_type, u_int_type
         };
-        promote(long_double_type);
-        promote(double_type);
-        promote(float_type);
-        gen_int_promotion(x, ctx);
-        gen_int_promotion(y, ctx);
-        promote(u_long_type);
-        promote(long_type);
-        promote(u_int_type);
+        for (_& tt : types) {
+            if (aa == tt or bb == tt) {
+                return tt;
+            }
+        }
+        return int_type;
     }
 
-    _ silent_gen_exp(const t_ast& ast, t_ctx& ctx, bool c = true) {
+    void gen_arithmetic_conversions(t_val& x, t_val& y, const t_ctx& ctx) {
+        _ common_type = common_arithmetic_type(x.type(), y.type());
+        x = gen_conversion(common_type, x, ctx);
+        y = gen_conversion(common_type, y, ctx);
+    }
+
+    _ compile_time_eval(const t_ast& ast, t_ctx& ctx, bool c = true) {
         _ o = prog.silence();
         prog.silence(true);
         _ res = gen_exp(ast, ctx, c);
@@ -396,6 +394,7 @@ namespace {
         _ arg_cnt = ast.children.size();
         t_val x;
         t_val y;
+        t_val z;
         t_val res;
         if (op == "integer_constant") {
             unsigned long w;
@@ -567,8 +566,8 @@ namespace {
             y = gen_exp(ast[1], ctx);
             res = gen_or(x, y, ctx);
         } else if (op == "&&") {
-            _ xt = silent_gen_exp(ast[0], ctx);
-            _ yt = silent_gen_exp(ast[1], ctx);
+            _ xt = compile_time_eval(ast[0], ctx);
+            _ yt = compile_time_eval(ast[1], ctx);
             if (xt.is_constant() and yt.is_constant()) {
                 if (xt.is_false() or yt.is_false()) {
                     res = t_val(0);
@@ -595,8 +594,8 @@ namespace {
                 res = t_val(res_id, int_type);
             }
         } else if (op == "||") {
-            _ xt = silent_gen_exp(ast[0], ctx);
-            _ yt = silent_gen_exp(ast[1], ctx);
+            _ xt = compile_time_eval(ast[0], ctx);
+            _ yt = compile_time_eval(ast[1], ctx);
             if (xt.is_constant() and yt.is_constant()) {
                 if (xt.is_false() and yt.is_false()) {
                     res = t_val(0);
@@ -735,8 +734,52 @@ namespace {
             _ type = make_type(ast[0], ctx);
             res = t_val(type.size());
         } else if (op == "sizeof_exp") {
-            x = silent_gen_exp(ast[0], ctx, false);
+            x = compile_time_eval(ast[0], ctx, false);
             res = t_val(x.type().size());
+        } else if (op == "?:") {
+            x = gen_exp(ast[0], ctx);
+            constrain(x.type().is_scalar(), "operand is not a scalar",
+                      ast[0].loc);
+            _ yy = compile_time_eval(ast[1], ctx);
+            _ yt = yy.type();
+            _ zz = compile_time_eval(ast[2], ctx);
+            _ zt = zz.type();
+            _ common_type = yt;
+            if (yt == zt) {
+            } else if (yt.is_arithmetic() and zt.is_arithmetic()) {
+                common_type = common_arithmetic_type(yt, zt);
+            } else {
+                constrain(false,
+                          "could not bring the operands to a common type",
+                          ast.loc);
+            }
+            if (x.is_constant()) {
+                _ w = gen_exp(ast[x.is_false() ? 2 : 1], ctx);
+                res = gen_conversion(common_type, w, ctx);
+            } else {
+                _ cond_true = make_label();
+                _ cond_false = make_label();
+                _ end = make_label();
+
+                prog.cond_br(gen_is_zero_i1(x, ctx),
+                             cond_false, cond_true);
+
+                put_label(cond_true, false);
+                y = gen_exp(ast[1], ctx);
+                _ val_if_true = gen_conversion(common_type, y, ctx);
+                prog.br(end);
+
+                put_label(cond_false, false);
+                z = gen_exp(ast[2], ctx);
+                _ val_if_false = gen_conversion(common_type, z, ctx);
+                _ cond_false_end = make_label();
+                put_label(cond_false_end);
+
+                put_label(end);
+                _ res_id = prog.phi(ctx.as(val_if_true), cond_true,
+                                    ctx.as(val_if_false), cond_false_end);
+                res = t_val(res_id, common_type);
+            }
         } else {
             throw std::logic_error("unhandled operator " + op);
         }
