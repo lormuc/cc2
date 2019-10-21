@@ -8,7 +8,6 @@ class t_val {
     t_type _type;
     bool _is_lvalue = false;
     bool _is_constant = false;
-    bool _is_void_null = false;
     unsigned long _i_val;
     double _f_val;
 
@@ -24,7 +23,6 @@ public:
     t_val(double x, const t_type& t) { f_init(t, x); }
     t_val(unsigned long x) { i_init(u_long_type, x); }
     t_val(int x) { i_init(int_type, x); }
-    t_val(void* p);
     str as() const { return _as; }
     const t_type& type() const { return _type; }
     bool is_lvalue() const { return _is_lvalue; }
@@ -32,7 +30,6 @@ public:
     unsigned long u_val() const { return _i_val; }
     long s_val() const { return long(_i_val); }
     double f_val() const { return _f_val; }
-    bool is_void_null() const { return _is_void_null; }
     bool is_false() const;
 
     t_val operator~() const;
@@ -49,3 +46,5 @@ public:
     t_val operator<<(const t_val& x) const;
     t_val operator>>(const t_val& x) const;
 };
+
+t_val make_null_pointer(t_type);

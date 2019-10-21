@@ -418,7 +418,7 @@ namespace {
     }
     def_rule(cast);
 
-    _ cast_exp_() { return or_(un_exp, cast); }
+    _ cast_exp_() { return or_(cast, un_exp); }
     def_rule(cast_exp);
 
     _ left_assoc_bin_op(const vec<str>& ops,

@@ -92,6 +92,7 @@ str t_prog::assemble() {
     res += "\n";
     res += "declare i32 @printf(i8*, ...)\n";
     res += "declare i32 @snprintf(i8*, i64, i8*, ...)\n";
+    res += "declare i8* @calloc(i64, i64)\n";
     res += decls;
     return res;
 }
@@ -116,17 +117,17 @@ void t_prog::declare_external(const str& name, const str& type) {
     append(global_storage, "@" + name + " = external global " + type + "\n");
 }
 
-str t_prog::def(const str& type, bool _static) {
-    if (_static) {
-        _ res = make_new_global_id();
-        append(global_storage, res + " = internal global "
-               + type + " zeroinitializer\n");
-        return res;
-    } else {
-        _ res = make_new_id();
-        append(func_var_alloc, func_line(res + " = alloca " + type));
-        return res;
-    }
+str t_prog::def_global(const str& name, const str& val, bool _internal) {
+    _ res = (_internal ? make_new_global_id() : ("@" + name));
+    append(global_storage, (res + (_internal ? " = internal " : " = ")
+                            + "global " + val + "\n"));
+    return res;
+}
+
+str t_prog::def_on_stack(const str& type) {
+    _ res = make_new_id();
+    append(func_var_alloc, func_line(res + " = alloca " + type));
+    return res;
 }
 
 str t_prog::member(const t_asm_val& v, int i, bool is_constant) {
@@ -249,7 +250,7 @@ void t_prog::func_return_type(const str& x) {
 }
 
 str t_prog::func_param(const str& t) {
-    _ as = def(t);
+    _ as = def_on_stack(t);
     _ param_idx = "%" + std::to_string(func_params.size());
     store({t, param_idx}, {t + "*", as});
     func_params.push_back(t);

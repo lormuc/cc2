@@ -86,10 +86,10 @@ namespace {
 
     _ hex_digit_to_int(char digit) {
         if (digit >= 'a' and digit <= 'f') {
-            return digit - 'a';
+            return digit - 'a' + 10;
         }
         if (digit >= 'A' and digit <= 'F') {
-            return digit - 'A';
+            return digit - 'A' + 10;
         }
         return digit - '0';
     }
@@ -185,10 +185,10 @@ struct t_macros_find_result {
 
 class t_macros {
     std::unordered_map<str, t_macro> macros;
-    const t_file_manager& file_manager;
+    t_file_manager& file_manager;
 
 public:
-    t_macros(const t_file_manager& file_manager_)
+    t_macros(t_file_manager& file_manager_)
         : file_manager(file_manager_) {
     }
 
@@ -245,7 +245,9 @@ namespace {
     }
 
     _ expect(const str& kind, t_pp_iter it) {
-        constrain((*it).kind == kind, "expected " + kind, (*it).loc);
+        constrain((*it).kind == kind,
+                  "expected " + kind + ", got " + (*it).kind,
+                  (*it).loc);
     }
 
     _ is_eof(_ i) {
@@ -552,7 +554,7 @@ class t_preprocessor {
     t_pp_seq& lex_seq;
     t_pp_iter pos;
     t_macros macros;
-    const t_file_manager& file_manager;
+    t_file_manager& file_manager;
 
     void skip(bool ws = true) {
         pos = lex_seq.erase(pos);
@@ -661,11 +663,63 @@ class t_preprocessor {
         return true;
     }
 
+    _ include_search(const vec<str>& dirs, const str& rel_path) {
+        for (_& dir : dirs) {
+            _ abs_path = dir + "/" + rel_path;
+            try {
+                return file_manager.read_file(abs_path, rel_path);
+            } catch (const std::ifstream::failure&) {
+            }
+        }
+        return size_t(-1);
+    }
+
     _ include() {
         if (not command("include")) {
             return false;
         }
+        // _ arg_loc = (*pos).loc;
+        // _ end = find_newline(pos);
+        // constrain((*pos).kind != "newline",
+        //           "expected <filename> or \"filename\"", arg_loc);
+        // if ((*next(end, -1)).kind == "whitespace") {
+        //     end--;
+        // }
+        // pos = expand(lex_seq, pos, end, macros);
+        // str val;
+        // for (_ it = pos; it != end; it++) {
+        //     val += (*it).val;
+        // }
+        // constrain(((val[0] == '<' and val.back() == '>')
+        //            or (val[0] == '"' and val.back() == '"')),
+        //           "expected <filename> or \"filename\"", arg_loc);
+        // const _ rel_path = unwrap(val);
+        // _ file_idx = size_t(-1);
+        // if (val[0] == '"') {
+        //     _ cur_path = file_manager.get_abs_path(arg_loc.file_idx());
+        //     file_idx = include_search({get_file_dir(cur_path)}, rel_path);
+        // }
+        // if (file_idx == size_t(-1)) {
+        //     _ dirs = vec<str>{
+        //         "/usr/local/include",
+        //         get_abs_path(".") + "/include",
+        //         "/usr/include/x86_64-linux-gnu",
+        //         "/include",
+        //         "/usr/include",
+        //     };
+        //     file_idx = include_search(dirs, rel_path);
+        //     constrain(file_idx != size_t(-1),
+        //               "could not open " + rel_path, arg_loc);
+        // }
         skip_until_next_line();
+        // _ pp_ls = lex(file_idx, file_manager);
+        // assert(not pp_ls.empty() and pp_ls.back().kind == "eof");
+        // pp_ls.pop_back();
+        // if (not pp_ls.empty()) {
+        //     _ inc_start = pp_ls.begin();
+        //     lex_seq.splice(pos, pp_ls);
+        //     pos = inc_start;
+        // }
         return true;
     }
 
@@ -808,17 +862,16 @@ class t_preprocessor {
         return if_section() or control_line() or simple_lines();
     }
 
+    void group() {
+        while (group_part()) {
+        }
+    }
 public:
-    t_preprocessor(t_pp_seq& ls, const t_file_manager& file_manager_)
+    t_preprocessor(t_pp_seq& ls, t_file_manager& file_manager_)
         : lex_seq(ls)
         , pos(ls.begin())
         , macros(file_manager_)
         , file_manager(file_manager_) {
-    }
-
-    void group() {
-        while (group_part()) {
-        }
     }
 
     void scan() {
@@ -827,7 +880,7 @@ public:
     }
 };
 
-void preprocess(t_pp_seq& ls, const t_file_manager& fm) {
+void preprocess(t_pp_seq& ls, t_file_manager& fm) {
     _ pp = t_preprocessor(ls, fm);
     pp.scan();
 }

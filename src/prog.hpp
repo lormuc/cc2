@@ -44,7 +44,7 @@ public:
     str make_new_global_id();
     void def_struct(const str& name, const str& type);
     void def_opaque_struct(const str& name);
-    str def(const str& type, bool = false);
+    str def_on_stack(const str& type);
     str assemble();
     void put_label(const str&, bool = true);
     str make_label();
@@ -78,4 +78,5 @@ public:
     void declare(const str& ret_type, const str& name, vec<str> params);
     void declare_external(const str& name, const str& type);
     str def_static_val(const str&);
+    str def_global(const str& name, const str& val, bool _internal);
 };

@@ -10,7 +10,11 @@ void t_val::i_init(const t_type& t, unsigned long v) {
     _type = t;
     _is_constant = true;
     _i_val = v;
-    _as = std::to_string(u_val());
+    if (t.is_pointer() and v == 0) {
+        _as = "null";
+    } else {
+        _as = std::to_string(u_val());
+    }
 }
 
 void t_val::f_init(const t_type& t, double v) {
@@ -27,19 +31,8 @@ t_val::t_val(const str& id, const t_type& t, bool lv, bool n_is_constant) {
     _is_constant = n_is_constant;
 }
 
-t_val::t_val(void* p) {
-    assert(p == (void*)0);
-    _type = void_pointer_type;
-    _is_void_null = true;
-    _is_constant = true;
-    _as = "null";
-}
-
 bool t_val::is_false() const {
     assert(is_constant());
-    if (is_void_null()) {
-        return true;
-    }
     if (type().is_floating()) {
         return f_val() == 0;
     } else {
@@ -155,4 +148,8 @@ t_val t_val::operator>>(const t_val& x) const {
     } else {
         return t_val(u_val() >> x.u_val(), type());
     }
+}
+
+t_val make_null_pointer(t_type type) {
+    return t_val(0ul, type);
 }

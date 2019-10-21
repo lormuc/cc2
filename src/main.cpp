@@ -87,11 +87,21 @@ _ concatenate_string_literals(std::list<t_pp_lexeme>& ls) {
     _ it = ls.begin();
     while (it != ls.end()) {
         if ((*it).kind == "string_literal") {
-            while (next(it) != ls.end()
-                   and (*next(it)).kind == "string_literal") {
+            while (true) {
+                _ jt = it;
+                jt++;
+                if (jt == ls.end()) {
+                    break;
+                }
+                if ((*jt).kind == "whitespace") {
+                    jt++;
+                }
+                if (jt == ls.end() or (*jt).kind != "string_literal") {
+                    break;
+                }
                 (*it).val.pop_back();
-                (*it).val.append((*next(it)).val, 1);
-                ls.erase(next(it));
+                (*it).val.append((*jt).val, 1);
+                ls.erase(next(it), next(jt));
             }
         }
         it++;

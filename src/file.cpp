@@ -8,7 +8,7 @@ namespace fs = std::experimental::filesystem;
 
 size_t t_file_manager::read_file(const str& abs_path, const str& rel_path) {
     _ is = std::ifstream();
-    is.exceptions(std::ifstream::badbit);
+    is.exceptions(std::ifstream::badbit | std::ifstream::failbit);
     is.open(abs_path);
 
     is.seekg(0, std::ios::end);
@@ -42,6 +42,10 @@ const str& t_file_manager::get_abs_path(size_t idx) const {
 
 void t_file_manager::clear() {
     files.clear();
+}
+
+str get_abs_path(const str& path) {
+    return fs::canonical(path);
 }
 
 str get_file_dir(const str& abs_path) {

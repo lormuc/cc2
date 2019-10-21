@@ -33,9 +33,8 @@ namespace {
     }
 
     bool is_null(const t_val& x) {
-        return (x.is_constant()
-                and ((x.type().is_integral() and x.is_false())
-                     or x.is_void_null()));
+        return (x.is_constant() and x.is_false()
+                and (x.type().is_integral() or x.type() == void_pointer_type));
     }
 
     t_val apply(str op, const t_val& x, const t_val& y, const t_ctx& ctx) {
@@ -147,8 +146,12 @@ namespace {
         return gen_sub(0, x, ctx);
     }
 
-    t_val dereference(const t_val& v) {
-        return t_val(v.as(), v.type().pointee_type(), true, v.is_constant());
+    t_val dereference(const t_val& v, const t_ctx& ctx) {
+        _ type = ctx.complete_type(v.type().pointee_type());
+        if (type.is_incomplete() and not type.is_function()) {
+            throw t_bad_operands();
+        }
+        return t_val(v.as(), type, true, v.is_constant());
     }
 
     t_val struct_or_union_member(const t_val& x, const str& field_name,
@@ -454,6 +457,10 @@ namespace {
                                       {string_type, size_t_type, string_type},
                                       true);
                 res = t_val(str("@snprintf"), tp);
+            } else if (ast.vv == "calloc") {
+                _ tp = make_func_type(void_pointer_type,
+                                      {size_t_type, size_t_type});
+                res = t_val(str("@calloc"), tp);
             } else {
                 res = ctx.get_id_data(ast.vv).val;
             }
@@ -474,7 +481,7 @@ namespace {
             if (not e.type().is_pointer()) {
                 throw t_bad_operands();
             }
-            res = dereference(e);
+            res = dereference(e, ctx);
         } else if (op == "-" and arg_cnt == 1) {
             _ e = gen_exp(ast[0], ctx);
             if (not e.type().is_arithmetic()) {
@@ -680,12 +687,12 @@ namespace {
             x = gen_exp(ast[0], ctx, false);
             res = struct_or_union_member(x, ast[1].vv, ctx);
         } else if (op == "arrow") {
-            x = dereference(gen_exp(ast[0], ctx));
+            x = dereference(gen_exp(ast[0], ctx), ctx);
             res = struct_or_union_member(x, ast[1].vv, ctx);
         } else if (op == "array_subscript") {
             _ z = gen_add(gen_exp(ast[0], ctx),
                           gen_exp(ast[1], ctx), ctx);
-            res = dereference(z);
+            res = dereference(z, ctx);
         } else if (op == "postfix_increment") {
             _ e = gen_exp(ast[0], ctx, false);
             if (not unqualify(e.type()).is_scalar()
@@ -694,7 +701,7 @@ namespace {
             }
             res = convert_lvalue(e, ctx);
             _ z = gen_add(res, 1, ctx);
-            gen_assign(e, z, ctx);
+            gen_convert_assign(e, z, ctx);
         } else if (op == "postfix_decrement") {
             _ e = gen_exp(ast[0], ctx, false);
             if (not unqualify(e.type()).is_scalar()
@@ -703,7 +710,7 @@ namespace {
             }
             res = convert_lvalue(e, ctx);
             _ z = gen_sub(res, 1, ctx);
-            gen_assign(e, z, ctx);
+            gen_convert_assign(e, z, ctx);
         } else if (op == "prefix_increment") {
             _ e = gen_exp(ast[0], ctx, false);
             if (not unqualify(e.type()).is_scalar()
@@ -712,7 +719,7 @@ namespace {
             }
             _ z = convert_lvalue(e, ctx);
             res = gen_add(z, 1, ctx);
-            gen_assign(e, res, ctx);
+            gen_convert_assign(e, res, ctx);
         } else if (op == "prefix_decrement") {
             _ e = gen_exp(ast[0], ctx, false);
             if (not unqualify(e.type()).is_scalar()
@@ -721,7 +728,7 @@ namespace {
             }
             _ z = convert_lvalue(e, ctx);
             res = gen_sub(z, 1, ctx);
-            gen_assign(e, res, ctx);
+            gen_convert_assign(e, res, ctx);
         } else if (op == "cast") {
             _ e = gen_exp(ast[1], ctx);
             _ t = make_type(ast[0], ctx);
@@ -847,6 +854,9 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
     }
     if (not t.is_scalar() or not v.type().is_scalar()) {
         throw t_conversion_error(v.type(), t);
+    }
+    if (is_null(v) and t.is_pointer()) {
+        return make_null_pointer(t);
     }
     if (v.is_constant() and t.is_arithmetic() and v.type().is_arithmetic()) {
         if (t.is_integral() and v.type().is_integral()) {
