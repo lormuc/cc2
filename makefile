@@ -6,7 +6,7 @@ hdr_ext = .hpp
 
 c_flags = \
  -funsigned-char -Wall -Wextra -Wno-char-subscripts -Wno-unused-variable \
- -Werror -std=c++17 -fmax-errors=1 -D_GLIBCXX_ASSERTIONS -g
+ -Werror -std=c++17 -fmax-errors=1 -O3
 
 obj := $(patsubst src/%$(ext), build/%.o, $(wildcard src/*$(ext)))
 hdr = $(wildcard src/*$(hdr_ext))

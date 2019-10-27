@@ -18,8 +18,8 @@ t_prog prog;
 namespace {
     std::unordered_map<str, bool> func_is_defined;
 
-    void gen_compound_statement(const t_ast& ast, t_ctx ctx);
-    void gen_statement(const t_ast& c, t_ctx& ctx);
+    void gen_compound_stmt(const t_ast& ast, t_ctx ctx);
+    void gen_stmt(const t_ast& c, t_ctx& ctx);
 
     void err(const str& str, t_loc loc) {
         throw t_compile_error(str, loc);
@@ -62,15 +62,14 @@ namespace {
         }
         _ is_str = (is_char_array(type) and ini.uu == "string_literal");
         _ is_str_in_braces = (is_char_array(type)
-                              and ini.uu == "initializer_list"
+                              and ini.uu == "initzers"
                               and ini[0].uu == "string_literal");
         _& str_ini = (is_str_in_braces ? ini[0].vv : ini.vv);
         is_str = is_str or is_str_in_braces;
         for (size_t i = 0; i < type.length(); i++) {
             _ elt_type = type.element_type(i);
             if ((elt_type.is_struct() or elt_type.is_array())
-                and (j == ini.children.size()
-                     or ini[j].uu != "initializer_list")) {
+                and (j == ini.children.size() or ini[j].uu != "initzers")) {
                 res += static_val_as_idx(elt_type, ini, j, ctx);
             } else {
                 _ len = (is_str ? (str_ini.length() + 1)
@@ -104,7 +103,7 @@ namespace {
         }
         if (type.is_scalar()) {
             _ ptr = &ini;
-            while ((*ptr).uu == "initializer_list") {
+            while ((*ptr).uu == "initzers") {
                 if ((*ptr).children.size() != 1) {
                     err("bad initializer list for a scalar", ini.loc);
                 }
@@ -145,7 +144,7 @@ namespace {
         size_t len = 0;
         if (is_char_array(type) and ast.uu == "string_literal") {
             len = ast.vv.length() + 1;
-        } else if (is_char_array(type) and ast.uu == "initializer_list"
+        } else if (is_char_array(type) and ast.uu == "initzers"
                    and ast.children.size() != 0
                    and ast[0].uu == "string_literal") {
             len = ast[0].vv.length() + 1;
@@ -155,7 +154,7 @@ namespace {
             _ elt_len = flat_length(type.element_type());
             _ i = size_t(0);
             while (i < ast.children.size()) {
-                if (ast[i].uu == "initializer_list") {
+                if (ast[i].uu == "initzers") {
                     len++;
                     i++;
                 } else {
@@ -194,9 +193,9 @@ namespace {
 
     void gen_declaration(const t_ast& ast, t_ctx& ctx) {
         if (ast.children.size() == 1 and ast[0].children.size() == 1
-            and ast[0][0].uu == "struct_or_union_specifier"
-            and ast[0][0].children.empty()) {
-            _& struct_name = ast[0][0].vv;
+            and ast[0][0].uu == "struct_spec"
+            and ast[0][0].children.size() == 1) {
+            _& struct_name = ast[0][0][0].vv;
             try {
                 ctx.scope_get_tag_data(struct_name).type;
             } catch (t_undefined_name_error) {
@@ -260,7 +259,7 @@ namespace {
                     if (has_initializer) {
                         _& init = ast[i][1];
                         t_val w;
-                        if (init.uu != "initializer_list"
+                        if (init.uu != "initzers"
                             and not (type.is_array()
                                      and init.uu == "string_literal")) {
                             w = gen_exp(init, ctx);
@@ -275,10 +274,10 @@ namespace {
     }
 
     _ def_switch_labels(const t_type& t, const t_ast& ast, t_ctx& ctx) {
-        if (ast.uu == "switch") {
+        if (ast.uu == "switch_stmt") {
             return;
         }
-        if (ast.uu == "case") {
+        if (ast.uu == "case_stmt") {
             try {
                 _ x = gen_exp(ast[0], ctx);
                 if (not is_integral_constant(x)) {
@@ -289,7 +288,7 @@ namespace {
             } catch (t_redefinition_error) {
                 err("duplicate case value", ast.loc);
             }
-        } else if (ast.uu == "default") {
+        } else if (ast.uu == "default_stmt") {
             if (ctx.default_label() != "") {
                 err("duplicate default label", ast.loc);
             }
@@ -314,7 +313,7 @@ namespace {
             default_label = ctx.break_label();
         }
         prog.switch_(ctx.as(x), default_label, ctx.get_asm_cases());
-        gen_statement(ast[1], ctx);
+        gen_stmt(ast[1], ctx);
         put_label(ctx.break_label());
     }
 
@@ -328,7 +327,7 @@ namespace {
         prog.cond_br(gen_is_zero_i1(cond_val, ctx),
                      ctx.break_label(), loop_body);
         put_label(loop_body);
-        gen_statement(ast[1], ctx);
+        gen_stmt(ast[1], ctx);
         put_label(ctx.loop_body_end());
         prog.br(loop_begin);
         put_label(ctx.break_label());
@@ -339,7 +338,7 @@ namespace {
         ctx.loop_body_end(make_label());
         _ loop_begin = make_label();
         put_label(loop_begin);
-        gen_statement(ast[0], ctx);
+        gen_stmt(ast[0], ctx);
         put_label(ctx.loop_body_end());
         _ cond_val = gen_exp(ast[1], ctx);
         prog.cond_br(gen_is_zero_i1(cond_val, ctx),
@@ -366,7 +365,7 @@ namespace {
         } else {
             put_label(loop_body);
         }
-        gen_statement(ast[3], ctx);
+        gen_stmt(ast[3], ctx);
         put_label(ctx.loop_body_end());
         _& post_exp = ast[2];
         if (not post_exp.children.empty()) {
@@ -376,16 +375,16 @@ namespace {
         put_label(ctx.break_label());
     }
 
-    void gen_statement(const t_ast& c, t_ctx& ctx) {
-        if (c.uu == "case") {
+    void gen_stmt(const t_ast& c, t_ctx& ctx) {
+        if (c.uu == "case_stmt") {
             put_label(ctx.get_case_label());
-            gen_statement(c[1], ctx);
-        } else if (c.uu == "default") {
+            gen_stmt(c[1], ctx);
+        } else if (c.uu == "default_stmt") {
             put_label(ctx.default_label());
-            gen_statement(c[0], ctx);
-        } else if (c.uu == "switch") {
+            gen_stmt(c[0], ctx);
+        } else if (c.uu == "switch_stmt") {
             gen_switch(c, ctx);
-        } else if (c.uu == "if") {
+        } else if (c.uu == "if_stmt") {
             _ cond_true = make_label();
             _ cond_false = make_label();
             _ end = make_label();
@@ -397,51 +396,51 @@ namespace {
             _ cmp_res = prog.make_new_id();
             prog.cond_br(gen_is_zero_i1(cond_val, ctx), cond_false, cond_true);
             put_label(cond_true, false);
-            gen_statement(c.children[1], ctx);
+            gen_stmt(c.children[1], ctx);
             prog.br(end);
             put_label(cond_false, false);
             if (c.children.size() == 3) {
-                gen_statement(c.children[2], ctx);
+                gen_stmt(c.children[2], ctx);
             } else {
                 prog.noop();
             }
             put_label(end);
             prog.noop();
-        } else if (c.uu == "exp_statement") {
+        } else if (c.uu == "exp_stmt") {
             if (not c.children.empty()) {
                 gen_exp(c.children[0], ctx);
             }
-        } else if (c.uu == "return") {
+        } else if (c.uu == "return_stmt") {
             if (c.children.size() != 0) {
                 _ val = gen_exp(c[0], ctx);
                 gen_convert_assign(ctx.return_var(), val, ctx);
             }
             prog.br(ctx.func_end());
-        } else if (c.uu == "compound_statement") {
-            gen_compound_statement(c, ctx);
-        } else if (c.uu == "while") {
+        } else if (c.uu == "compound_stmt") {
+            gen_compound_stmt(c, ctx);
+        } else if (c.uu == "while_stmt") {
             gen_while(c, ctx);
-        } else if (c.uu == "do_while") {
+        } else if (c.uu == "do_while_stmt") {
             gen_do_while(c, ctx);
-        } else if (c.uu == "for") {
+        } else if (c.uu == "for_stmt") {
             gen_for(c, ctx);
-        } else if (c.uu == "break") {
+        } else if (c.uu == "break_stmt") {
             if (ctx.break_label() == "") {
                 err("break not in loop or switch", c.loc);
             }
             prog.br(ctx.break_label());
-        } else if (c.uu == "continue") {
+        } else if (c.uu == "continue_stmt") {
             if (ctx.loop_body_end() == "") {
                 err("continue not in loop", c.loc);
             }
             prog.br(ctx.loop_body_end());
-        } else if (c.uu == "goto") {
+        } else if (c.uu == "goto_stmt") {
             prog.br(ctx.get_label_data(c[0].vv));
-        } else if (c.uu == "label") {
-            put_label(ctx.get_label_data(c.vv));
-            gen_statement(c[0], ctx);
+        } else if (c.uu == "label_stmt") {
+            put_label(ctx.get_label_data(c[0].vv));
+            gen_stmt(c[1], ctx);
         } else {
-            err("unknown statement", c.loc);
+            err("unknown statement " + c.uu, c.loc);
         }
     }
 
@@ -449,11 +448,11 @@ namespace {
         if (ast.uu == "declaration") {
             gen_declaration(ast, ctx);
         } else {
-            gen_statement(ast, ctx);
+            gen_stmt(ast, ctx);
         }
     }
 
-    void gen_compound_statement(const t_ast& ast, t_ctx ctx) {
+    void gen_compound_stmt(const t_ast& ast, t_ctx ctx) {
         if (ast.children.size() != 0) {
             for (_& c : ast.children) {
                 gen_block_item(c, ctx);
@@ -464,9 +463,9 @@ namespace {
     }
 
     void def_labels(const t_ast& ast, t_ctx& ctx) {
-        if (ast.uu == "label") {
+        if (ast.uu == "label_stmt") {
             try {
-                ctx.def_label(ast.vv, make_label());
+                ctx.def_label(ast[0].vv, make_label());
             } catch (t_redefinition_error) {
                 err("label redefinition", ast.loc);
             }
@@ -479,7 +478,7 @@ namespace {
     _ gen_function(const t_ast& ast, t_ctx& octx) {
         _ type = make_base_type(ast[0], octx);
         _ ctx = octx;
-        _ func_name = unpack_declarator(type, ast[1], ctx, true);
+        _ func_name = unpack_declarator(type, ast[1][0], ctx, true);
         func_is_defined[func_name] = true;
         if (not type.is_function()) {
             err("identifier does not have a function type", ast.loc);
@@ -536,7 +535,7 @@ void put_label(const str& s, bool f) {
 
 namespace {
     _ is_param_list_empty(const vec<t_ast>& ast) {
-        return (ast.empty() or (ast[0][0][0].uu == "type_specifier"
+        return (ast.empty() or (ast[0][0][0].uu == "simple_type_spec"
                                 and ast[0][0][0].vv == "void"));
     }
 }
@@ -544,10 +543,10 @@ namespace {
 str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
                       bool is_func_def) {
     _& kind = ast.uu;
-    if (kind == "pointer") {
+    if (kind == "ptr_decltor") {
         type = make_pointer_type(type);
         return unpack_declarator(type, ast[0], ctx, is_func_def);
-    } else if (kind == "array") {
+    } else if (kind == "array_decltor") {
         if (ast.children.size() == 2) {
             _& size_exp = ast[1];
             _ size_val = gen_exp(size_exp, ctx);
@@ -562,7 +561,7 @@ str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
             type = make_array_type(type);
         }
         return unpack_declarator(type, ast[0], ctx, is_func_def);
-    } else if (kind == "function") {
+    } else if (kind == "func_decltor") {
         if (ast.children.size() == 2) {
             _ is_variadic = false;
             vec<t_type> params;
@@ -602,13 +601,13 @@ str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
     } else if (kind == "identifier") {
         return ast.vv;
     } else {
-        throw std::logic_error(str(__func__) + " bad kind");
+        throw std::logic_error(str(__func__) + " bad kind " + kind);
     }
 }
 
 t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
-    _ struct_name = ast.vv;
-    if (ast.children.empty()) {
+    _ struct_name = ast[0].vv;
+    if (ast.children.size() == 1) {
         try {
             return ctx.get_tag_data(struct_name).type;
         } catch (t_undefined_name_error) {
@@ -619,7 +618,7 @@ t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
     }
     vec<str> field_name;
     vec<t_type> field_type;
-    for (_& c : ast.children) {
+    for (_& c : ast[1].children) {
         _ base = make_base_type(c[0], ctx);
         for (size_t i = 0; i < c[1].children.size(); i++) {
             _ type = base;
@@ -653,8 +652,8 @@ t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
 }
 
 t_type enum_specifier(const t_ast& ast, t_ctx& ctx) {
-    _ name = (ast.vv == "") ? make_anon_type_id() : ast.vv;
-    if (ast.children.empty()) {
+    _ name = (ast[0].vv == "") ? make_anon_type_id() : ast[0].vv;
+    if (ast.children.size() == 1) {
         try {
             _ type = ctx.get_tag_data(name).type;
             if (not type.is_enum()) {
@@ -666,11 +665,11 @@ t_type enum_specifier(const t_ast& ast, t_ctx& ctx) {
         }
     }
     _ cnt = 0;
-    for (_& e : ast.children) {
-        if (e.children.size() == 1) {
-            cnt = gen_exp(e[0], ctx).s_val();
+    for (_& e : ast[1].children) {
+        if (e.children.size() == 2) {
+            cnt = gen_exp(e[1], ctx).s_val();
         }
-        ctx.def_id(e.vv, cnt);
+        ctx.def_id(e[0].vv, cnt);
         cnt++;
     }
     _ type = make_enum_type(name);
@@ -689,8 +688,7 @@ t_type simple_specifiers(const t_ast& ast, t_ctx&) {
         if (c.uu == "storage_class_specifier") {
             continue;
         }
-        if (not (c.uu == "type_specifier"
-                 and has(simple_type_specifiers, c.vv))) {
+        if (c.uu != "simple_type_spec") {
             err("bad specifier", c.loc);
         }
         if (specifiers.count(c.vv) != 0) {
@@ -741,12 +739,12 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
         if (c.uu == "storage_class_specifier") {
             continue;
         }
-        if (c.uu == "struct_or_union_specifier") {
+        if (c.uu == "struct_spec") {
             return struct_specifier(c, ctx);
-        } else if (c.uu == "enum") {
+        } else if (c.uu == "enum_spec") {
             return enum_specifier(c, ctx);
         } else if (c.uu == "typedef_name") {
-            return ctx.get_typedef_type(c.vv);
+            return ctx.get_typedef_type(c[0].vv);
         }
     }
     return simple_specifiers(ast, ctx);
@@ -779,10 +777,10 @@ t_storage_class storage_class(const t_ast& ast) {
 void gen_program(const t_ast& ast) {
     t_ctx ctx;
     for (_& c : ast.children) {
-        if (c.uu == "declaration") {
-            gen_declaration(c, ctx);
-        } else if (c.uu == "function_definition") {
+        if (c.children.size() == 3 and c[2].uu == "compound_stmt") {
             gen_function(c, ctx);
+        } else {
+            gen_declaration(c, ctx);
         }
     }
     for (_& [name, is_defined] : func_is_defined) {

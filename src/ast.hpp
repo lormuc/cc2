@@ -22,6 +22,7 @@ struct t_ast {
     str vv;
     vec<t_ast> children;
     t_loc loc;
+    bool is_valid = true;
 
     t_ast() {}
 
@@ -74,11 +75,11 @@ struct t_ast {
     }
 
     t_ast& operator[](std::size_t i) {
-        return children.at(i);
+        return children[i];
     }
 
     const t_ast& operator[](std::size_t i) const {
-        return children.at(i);
+        return children[i];
     }
 };
 

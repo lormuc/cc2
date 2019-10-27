@@ -1,26 +1,31 @@
 #include <vector>
 #include <string>
-#include <stdexcept>
 #include <functional>
 #include <iostream>
 #include <cassert>
 #include <list>
+#include <stack>
 
 #include "misc.hpp"
 #include "ast.hpp"
 #include "lex.hpp"
 #include "gen.hpp"
 
-const _ debug = false;
-
 extern const vec<str> simple_type_specifiers = {
     "void", "char", "short", "int", "long", "float", "double",
     "signed", "unsigned"
 };
 
+using t_rule = bool(bool);
+using t_dyn_rule = std::function<bool(bool)>;
+
 class t_ast_ctx {
     vec<std::unordered_map<str, bool>> typedef_names;
     std::list<t_lexeme>::const_iterator pos;
+    std::stack<str> rule_names;
+    std::stack<t_ast*> node_ptrs;
+    t_ast result;
+    t_ast* m_cur_node = nullptr;
 public:
     t_ast_ctx() {
     }
@@ -28,6 +33,10 @@ public:
         typedef_names.clear();
         typedef_names.push_back({});
         pos = start;
+        rule_names = std::stack<str>();
+        node_ptrs = std::stack<t_ast*>();
+        result = t_ast();
+        m_cur_node = nullptr;
     }
     void enter_scope() {
         typedef_names.push_back({});
@@ -50,754 +59,431 @@ public:
     const t_lexeme& peek() {
         return *pos;
     }
-    void advance() {
-        pos++;
+    void advance(int n = 1) {
+        std::advance(pos, n);
     }
-    bool at_end() {
-        return (*pos).uu == "eof";
+    str cur_rule() const {
+        if (rule_names.empty()) {
+            return "";
+        }
+        return rule_names.top();
+    }
+    void add_leaf(const str& kind, const str& val) {
+        assert(m_cur_node != nullptr);
+        (*m_cur_node).add_child(t_ast(kind, val, peek().loc));
+    }
+    void enter_rule(const str& name) {
+        // cout << "enter " << name << "\n";
+        rule_names.push(name);
+    }
+    void leave_rule() {
+        rule_names.pop();
+    }
+    void create_node() {
+        // cout << "create " << cur_rule() << "\n";
+        node_ptrs.push(m_cur_node);
+        if (m_cur_node == nullptr) {
+            result = t_ast(cur_rule(), peek().loc);
+            m_cur_node = &result;
+        } else {
+            (*m_cur_node).children.push_back(t_ast(cur_rule(), peek().loc));
+            m_cur_node = &((*m_cur_node).children.back());
+        }
+    }
+    void replace_node() {
+        // cout << "create " << cur_rule() << "\n";
+        assert(m_cur_node != nullptr);
+        assert(not (*m_cur_node).children.empty());
+        _& last = (*m_cur_node).children.back();
+        _ x = t_ast(cur_rule(), peek().loc);
+        x.add_child(last);
+        last = x;
+        node_ptrs.push(m_cur_node);
+        m_cur_node = &last;
+    }
+    void leave_node() {
+        // cout << "leave  " << cur_rule() << "\n";
+        assert(not node_ptrs.empty());
+        m_cur_node = node_ptrs.top();
+        node_ptrs.pop();
+    }
+    const t_ast& last_child() const {
+        assert(not (*m_cur_node).children.empty());
+        return (*m_cur_node).children.back();
+    }
+    t_ast get_result() {
+        return std::move(result);
     }
 };
 
 namespace {
-    t_ast exp();
-    t_ast assign_exp();
-    t_ast cast_exp();
-    t_ast block_item();
-    t_ast statement();
-    t_ast declarator();
-    t_ast struct_declaration_list();
-    t_ast identifier();
-    t_ast abstract_declarator();
-    t_ast declaration_specifiers();
-    t_ast pointer();
-    t_ast initializer();
-    t_ast un_exp();
-    t_ast cond_exp();
-    t_ast type_name();
-    t_ast const_exp();
-
     t_ast_ctx ctx;
 
-    _ init(_ pos) {
-        ctx.init(pos);
-    }
+    _& peek() { return ctx.peek(); }
+    _ advance(int n = 1) { ctx.advance(n); }
+    _ cmp(const str& name) { return peek().uu == name; }
 
-    _& peek() {
-        return ctx.peek();
-    }
-
-    _ get_state() {
-        return ctx;
-    }
-
-    _ set_state(const _& x) {
-        ctx = x;
-    }
-
-    _ advance() {
-        ctx.advance();
-    }
-
-    _ at_end() {
-        return ctx.at_end();
-    }
-
-    _ add_child_opt(_& res, _ f) {
-        try {
-            res.add_child(f());
-        } catch (t_parse_error) {
-        }
-    }
-
-    _ apply_rule(_ rule, const str& rule_name) {
-        if (debug) {
-            _ loc = peek().loc;
-            cout << loc.line() << ":" << loc.column();
-            cout << " " << rule_name << "\n";
-        }
-        _ old_state = get_state();
-        try {
-            return rule();
-        } catch (const t_parse_error& e) {
-            set_state(old_state);
-            if (e.loc() == peek().loc) {
-                throw t_parse_error("expected " + rule_name, peek().loc);
-            } else {
-                throw;
-            }
-        }
-    }
-
-#define def_rule(n) t_ast n () { return apply_rule(n##_, #n); }
-
-    t_ast or_aux(t_parse_error max_err) {
-        throw max_err;
-    }
-
-    template<typename tx, typename ... targs>
-    t_ast or_aux(t_parse_error max_err, tx x, targs ... args) {
-        try {
-            return x();
-        } catch (t_parse_error err) {
-            if (err.loc() != max_err.loc()) {
-                max_err = err;
-            }
-            return or_aux(max_err, args ...);
-        }
-    }
-
-    template<typename ... targs>
-    t_ast or_(targs ... args) {
-        return or_aux(t_parse_error("", peek().loc), args ...);
-    }
-
-    _ opt(_ f) {
-        _ res = t_ast("opt", peek().loc);
-        try {
-            res.add_child(f());
-        } catch (t_parse_error) {
-        }
-        return res;
-    }
-
-    _ cmp(const str& name) {
-        return peek().uu == name;
-    }
-
-    _ pop(const str& name) {
-        if (not cmp(name)) {
-            throw t_parse_error("expected " + name, peek().loc);
-        }
-        _ res = peek().vv;
-        advance();
-        return res;
-    }
-
-    _ prim_exp_() {
-        _ kind = peek().uu;
-        _ value = peek().vv;
-        _ loc = peek().loc;
-        t_ast res;
-        if (kind == "identifier") {
-            res = t_ast(kind, value, loc);
+    bool syms_0(const char* sym) {
+        if (cmp(sym)) {
             advance();
-        } else if (kind == "integer_constant" or kind == "floating_constant"
-                   or kind == "char_constant") {
-            res = t_ast(kind, value, loc);
-            advance();
-        } else if (kind == "(") {
-            advance();
-            res = exp();
-            pop(")");
-        } else if (kind == "string_literal") {
-            res = t_ast(kind, value, loc);
-            advance();
+            return true;
+        }
+        return false;
+    }
+
+    bool syms_0(t_rule sym) {
+        return sym(false);
+    }
+
+    bool syms_0(t_dyn_rule sym) {
+        return sym(false);
+    }
+
+    bool apply_sym(bool only_check, const char* sym) {
+        if (only_check) {
+            return cmp(sym);
         } else {
-            throw t_parse_error(loc);
+            return syms_0(sym);
         }
-        return res;
     }
-    def_rule(prim_exp);
 
-    _ postfix_exp_() {
-        _ res = prim_exp();
-        while (true) {
-            _ loc = peek().loc;
-            if (cmp("(")) {
-                advance();
-                res = t_ast("function_call", {res});
-                if (cmp(")")) {
-                    advance();
-                } else {
-                    while (true) {
-                        res.add_child(assign_exp());
-                        if (not cmp(",")) {
-                            break;
-                        }
-                        advance();
-                    }
-                    pop(")");
-                }
-            } else if (cmp("[")) {
-                advance();
-                res = t_ast("array_subscript", {res, exp()});
-                pop("]");
-            } else if (cmp(".")) {
-                advance();
-                res = t_ast("struct_member", {res, identifier()});
-            } else if (cmp("->")) {
-                advance();
-                res = t_ast("arrow", {res, identifier()});
-            } else if (cmp("++")) {
-                advance();
-                res = t_ast("postfix_increment", {res});
-            } else if (cmp("--")) {
-                advance();
-                res = t_ast("postfix_decrement", {res});
-            } else {
-                break;
+    bool apply_sym(bool only_check, t_rule sym) {
+        return sym(only_check);
+    }
+
+    bool apply_sym(bool only_check, t_dyn_rule sym) {
+        return sym(only_check);
+    }
+
+    bool check(_ sym) {
+        return apply_sym(true, sym);
+    }
+
+    template<bool aux = false>
+    void syms_() {
+    }
+
+    template<typename t_sym, typename ... t_syms>
+    void syms_(t_sym s, t_syms ... ss) {
+        if (not syms_0(s)) {
+            _ msg = ctx.cur_rule();
+            if (not msg.empty()) {
+                msg += ": ";
             }
-            res.loc = loc;
+            msg += "unexpected symbol";
+            throw t_parse_error(msg, peek().loc);
         }
-        return res;
+        syms_(ss ...);
     }
-    def_rule(postfix_exp);
 
-    _ sizeof_exp_() {
-        _ res = t_ast("sizeof_exp", peek().loc);
-        pop("sizeof");
-        res.add_child(un_exp());
-        return res;
+    template<typename t_sym, typename ... t_syms>
+    bool syms(t_sym s, t_syms ... ss) {
+        if (syms_0(s)) {
+            syms_(ss ...);
+            return true;
+        }
+        return false;
     }
-    def_rule(sizeof_exp);
 
-    _ sizeof_type_() {
-        _ res = t_ast("sizeof_type", peek().loc);
-        pop("sizeof");
-        pop("(");
-        res.add_child(type_name());
-        pop(")");
-        return res;
-    }
-    def_rule(sizeof_type);
-
-    _ un_exp_() {
-        t_ast res;
-        vec<str> un_ops = {"&", "*", "+", "-", "~", "!"};
-        if (cmp("++")) {
-            res = t_ast("prefix_increment", peek().loc);
-            advance();
-            res.add_child(un_exp());
-        } else if (cmp("--")) {
-            res = t_ast("prefix_decrement", peek().loc);
-            advance();
-            res.add_child(un_exp());
-        } else if (has(un_ops, peek().uu)) {
-            res = t_ast(peek().uu, peek().loc);
-            advance();
-            res.add_child(cast_exp());
-        } else if (cmp("sizeof")) {
-            res = or_(sizeof_type, sizeof_exp);
+    template<typename t_sym, typename ... t_syms>
+    bool apply_rule(bool only_check, const str& name, t_sym s, t_syms ... ss) {
+        ctx.enter_rule(name);
+        _ res = false;
+        if (not check(s)) {
+            res = false;
+        } else if (only_check) {
+            res = true;
         } else {
-            res = postfix_exp();
+            ctx.create_node();
+            syms_(s, ss ...);
+            ctx.leave_node();
+            res = true;
         }
+        ctx.leave_rule();
         return res;
     }
-    def_rule(un_exp);
 
-    _ parameter_declaration_() {
-        _ res = t_ast("parameter_declaration", peek().loc);
-        res.add_child(declaration_specifiers());
-        try {
-            res.add_child(abstract_declarator());
-        } catch (t_parse_error) {
-            try {
-                res.add_child(declarator());
-            } catch (t_parse_error) {
-            }
+    template<typename t_sym, typename ... t_syms>
+    bool apply_aux_rule(bool only_check, t_sym s, t_syms ... ss) {
+        if (not check(s)) {
+            return false;
         }
-        return res;
+        if (only_check) {
+            return true;
+        }
+        syms_(s, ss ...);
+        return true;
     }
-    def_rule(parameter_declaration);
 
-    _ parameter_type_list_() {
-        _ res = t_ast("parameter_type_list", peek().loc);
-        res.add_child(parameter_declaration());
-        while (true) {
-            if (cmp(",")) {
-                advance();
-            } else {
-                break;
-            }
-            try {
-                res.add_child(parameter_declaration());
-            } catch (t_parse_error) {
-                if (cmp("...")) {
-                    advance();
-                    res.add_child(t_ast("...", peek().loc));
-                    break;
-                } else {
-                    throw;
-                }
-            }
-        }
-        return res;
-    }
-    def_rule(parameter_type_list);
-
-    _ abstract_subdeclarator_() {
-        pop("(");
-        _ e = abstract_declarator();
-        pop(")");
-        return e;
-    }
-    def_rule(abstract_subdeclarator);
-
-    _ direct_abstract_declarator_() {
-        _ res = t_ast();
-        _ empty = true;
-        try {
-            res = abstract_subdeclarator();
-            empty = false;
-        } catch (t_parse_error) {
-            res = t_ast("identifier", "", peek().loc);
-        }
-        while (true) {
-            _ loc = peek().loc;
-            if (cmp("[")) {
-                advance();
-                res = t_ast("array", {res});
-                if (cmp("]")) {
-                    advance();
-                } else {
-                    res.add_child(const_exp());
-                    pop("]");
-                }
-                empty = false;
-            } else if (cmp("(")) {
-                advance();
-                res = t_ast("function", {res});
-                if (cmp(")")) {
-                    advance();
-                } else {
-                    res.add_child(parameter_type_list());
-                    pop(")");
-                }
-                empty = false;
-            } else {
-                break;
-            }
-            res.loc = loc;
-
-        }
-        if (empty) {
-            throw t_parse_error(res.loc);
-        }
-        return res;
-    }
-    def_rule(direct_abstract_declarator);
-
-    _ abstract_declarator_() {
-        if (cmp("*")) {
-            _ res = t_ast("pointer", peek().loc);
-            advance();
-            try {
-                res.add_child(abstract_declarator());
-            } catch (t_parse_error) {
-                if (not (peek().uu == "eof" or peek().uu == ")"
-                         or peek().uu == ",")) {
-                    throw;
-                }
-                res.add_child(t_ast("identifier", "", peek().loc));
-            }
-            return res;
+    template<typename t_sym, typename ... t_syms>
+    bool apply_l_rule(bool only_check, const str& name,
+                      t_sym s, t_syms ... ss) {
+        ctx.enter_rule(name);
+        _ res = false;
+        if (not check(s)) {
+            res = false;
+        } else if (only_check) {
+            res = true;
         } else {
-            return direct_abstract_declarator();
+            ctx.replace_node();
+            syms_(s, ss ...);
+            ctx.leave_node();
+            res = true;
         }
-    }
-    def_rule(abstract_declarator);
-
-    _ type_name_() {
-        _ res = t_ast("type_name", peek().loc);
-        res.add_child(declaration_specifiers());
-        try {
-            res.add_child(abstract_declarator());
-        } catch (t_parse_error) {
-        }
+        ctx.leave_rule();
         return res;
     }
-    def_rule(type_name);
 
-    _ cast_() {
-        _ res = t_ast("cast", peek().loc);
-        pop("(");
-        res.add_child(type_name());
-        pop(")");
-        res.add_child(cast_exp());
-        return res;
-    }
-    def_rule(cast);
+#define def_l(n, ...) bool n(bool c){return apply_l_rule(c,#n,__VA_ARGS__);}
+#define def(n, ...) bool n(bool c){return apply_rule(c,#n,__VA_ARGS__);}
+#define def_aux(n, ...) bool n(bool c){return apply_aux_rule(c,__VA_ARGS__);}
 
-    _ cast_exp_() { return or_(cast, un_exp); }
-    def_rule(cast_exp);
-
-    _ left_assoc_bin_op(const vec<str>& ops,
-                        std::function<t_ast()> subexp) {
-        _ res = subexp();
-        while (true) {
-            _ op = peek().uu;
-            if (not has(ops, op)) {
-                break;
+    template<typename ... t_syms>
+    t_dyn_rule opt(t_syms ... ss) {
+        _ ff = [=](bool only_check) {
+            if (only_check) {
+                return true;
             }
-            _ loc = peek().loc;
-            advance();
-            _ t = subexp();
-            res = t_ast(op, {res, t});
-            res.loc = loc;
-        }
-        return res;
-    }
-
-    _ mul_exp_() {
-        return left_assoc_bin_op({"*", "/", "%"}, cast_exp);
-    }
-    def_rule(mul_exp);
-
-    _ add_exp_() {
-        return left_assoc_bin_op({"+", "-"}, mul_exp);
-    }
-    def_rule(add_exp);
-
-    _ shift_exp_() {
-        return left_assoc_bin_op({"<<", ">>"}, add_exp);
-    }
-    def_rule(shift_exp);
-
-    _ rel_exp_() {
-        return left_assoc_bin_op({"<", "<=", ">", ">="}, shift_exp);
-    }
-    def_rule(rel_exp);;
-
-    _ eql_exp_() {
-        return left_assoc_bin_op({"==", "!="}, rel_exp);
-    }
-    def_rule(eql_exp);
-
-    _ bit_and_exp_() {
-        return left_assoc_bin_op({"&"}, eql_exp);
-    }
-    def_rule(bit_and_exp);
-
-    _ bit_xor_exp_() {
-        return left_assoc_bin_op({"^"}, bit_and_exp);
-    }
-    def_rule(bit_xor_exp);
-
-    _ bit_or_exp_() {
-        return left_assoc_bin_op({"|"}, bit_xor_exp);
-    }
-    def_rule(bit_or_exp);
-
-    _ and_exp_() {
-        return left_assoc_bin_op({"&&"}, bit_or_exp);
-    }
-    def_rule(and_exp);
-
-    _ or_exp_() {
-        return left_assoc_bin_op({"||"}, and_exp);
-    }
-    def_rule(or_exp);
-
-    _ cond_exp_() {
-        _ res = or_exp();
-        if (peek().uu == "?") {
-            _ loc = peek().loc;
-            advance();
-            _ y = exp();
-            pop(":");
-            _ z = cond_exp();
-            res = t_ast("?:", {res, y, z});
-            res.loc = loc;
-        }
-        return res;
-    }
-    def_rule(cond_exp);
-
-    _ assign_() {
-        _ x = un_exp();
-        vec<str> ops = {
-            "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=",
-            "^=", "|="
+            syms(ss ...);
+            return true;
         };
-        _ op = peek().uu;
-        if (not has(ops, op)) {
-            throw t_parse_error("expected assignment operator",
-                                peek().loc);
+        return t_dyn_rule(ff);
+    }
+
+    bool apply_bar(bool) {
+        return false;
+    }
+
+    template<typename t_sym, typename ... t_syms>
+    bool apply_bar(bool only_check, t_sym sym, t_syms ... syms) {
+        if (not apply_sym(only_check, sym)) {
+            return apply_bar(only_check, syms ...);
         }
-        _ res = t_ast(op, peek().loc);
+        return true;
+    }
+
+    template<typename ... t_syms>
+    t_dyn_rule bar(t_syms ... syms) {
+        _ f = [=](bool only_check) {
+            return apply_bar(only_check, syms ...);
+        };
+        return t_dyn_rule(f);
+    }
+
+    template<typename ... t_syms>
+    t_dyn_rule __(t_syms ... syms) {
+        _ ff = [=](bool only_check) {
+            return apply_aux_rule(only_check, syms ...);
+        };
+        return t_dyn_rule(ff);
+    }
+
+    template<typename ... t_syms>
+    t_dyn_rule comma_seq(t_syms ... ss) {
+        _ ff = [=](bool only_check) {
+            _ x = check(__(ss ...));
+            if (only_check or not x) {
+                return x;
+            }
+            syms_(ss ...);
+            while (true) {
+                if (not cmp(",")) {
+                    break;
+                }
+                advance();
+                if (not syms(ss ...)) {
+                    advance(-1);
+                    break;
+                }
+            }
+            return true;
+        };
+        return t_dyn_rule(ff);
+    }
+
+    template<typename ... t_syms>
+    t_dyn_rule seq(t_syms ... ss) {
+        _ ff = [=](bool only_check) {
+            _ x = check(__(ss ...));
+            if (only_check or not x) {
+                return x;
+            }
+            while (syms(ss ...)) {
+            }
+            return true;
+        };
+        return t_dyn_rule(ff);
+    }
+
+    t_rule subexp;
+    t_rule assign_exp;
+    t_rule stmt;
+    t_rule decltor;
+    t_rule type_name;
+    t_rule un_exp;
+    t_rule param_types;
+    t_rule init_decltor;
+    t_rule initzers;
+    t_rule type_spec;
+    t_rule struct_decls;
+    t_rule cast_exp;
+    t_rule exp;
+    t_rule block_item;
+    t_rule or_exp;
+    t_rule enumtor;
+
+    bool identifier(bool only_check) {
+        if (only_check) {
+            return cmp("identifier");
+        }
+        if (cmp("identifier")) {
+            ctx.add_leaf("identifier", peek().vv);
+            advance();
+            return true;
+        }
+        return false;
+    }
+
+    bool empty_identifier(bool only_check) {
+        if (only_check) {
+            return true;
+        }
+        ctx.add_leaf("identifier", "");
+        return true;
+    }
+
+    bool prim_exp_0(bool only_check) {
+        _ kind = peek().uu;
+        _ val = peek().vv;
+        if ((kind == "identifier" and not ctx.is_typedef_name(val))
+            or kind == "integer_constant" or kind == "floating_constant"
+            or kind == "char_constant" or kind == "string_literal") {
+            if (only_check) {
+                return true;
+            }
+            advance();
+            ctx.add_leaf(kind, val);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    bool type_name_in_parens(bool only_check) {
+        if (not cmp("(")) {
+            return false;
+        }
         advance();
-        res.add_child(x);
-        res.add_child(assign_exp());
-        return res;
-    }
-    def_rule(assign);
-
-    _ assign_exp_() { return or_(assign, cond_exp); }
-    def_rule(assign_exp);
-
-    _ exp_() {
-        return left_assoc_bin_op({","}, assign_exp);
-    }
-    def_rule(exp);
-
-    t_ast const_exp() {
-        return cond_exp();
+        if (not check(type_name)) {
+            advance(-1);
+            return false;
+        }
+        advance(-1);
+        if (only_check) {
+            return true;
+        }
+        syms_("(", type_name, ")");
+        return true;
     }
 
-    _ exp_statement_() {
-        _ res = t_ast("exp_statement", peek().loc);
-        add_child_opt(res, exp);
-        pop(";");
-        return res;
-    }
-    def_rule(exp_statement);
-
-    _ pointer_() {
-        _ res = t_ast("pointer", peek().loc);
-        pop("*");
-        add_child_opt(res, pointer);
-        return res;
-    }
-    def_rule(pointer);
-
-    _ struct_declarator_list_() {
-        _ res = t_ast("struct_declarator_list", peek().loc);
-        while (true) {
-            res.add_child(declarator());
-            if (not cmp(",")) {
-                break;
+    _ left_assoc_op(const vec<str>& ops, _ e) {
+        _ ff = [=](bool only_check) {
+            _ x = check(e);
+            if (not x) {
+                return false;
             }
-            advance();
-        }
-        return res;
-    }
-    def_rule(struct_declarator_list);
-
-    _ struct_or_union_specifier_() {
-        _ res = t_ast("struct_or_union_specifier", peek().loc);
-        pop("struct");
-        if (cmp("identifier")) {
-            res.vv = peek().vv;
-            advance();
-            if (cmp("{")) {
-                advance();
-                res.children = struct_declaration_list().children;
-                pop("}");
+            if (only_check) {
+                return true;
             }
-        } else {
-            pop("{");
-            res.children = struct_declaration_list().children;
-            pop("}");
-        }
-        return res;
-    }
-    def_rule(struct_or_union_specifier);
-
-    _ enumerator_() {
-        _ res = t_ast("enumerator", peek().loc);
-        res.vv = pop("identifier");
-        if (cmp("=")) {
-            advance();
-            res.add_child(const_exp());
-        }
-        return res;
-    }
-    def_rule(enumerator);
-
-    _ enum_specifier_() {
-        _ res = t_ast("enum", peek().loc);
-        pop("enum");
-        if (cmp("identifier")) {
-            res.vv = peek().vv;
-            advance();
-        }
-        if (cmp("{")) {
-            advance();
+            syms_(e);
             while (true) {
-                res.add_child(enumerator());
-                if (not cmp(",")) {
+                _ op = peek().uu;
+                if (not has(ops, op)) {
                     break;
                 }
                 advance();
+                ctx.enter_rule(op);
+                ctx.replace_node();
+                syms_(e);
+                ctx.leave_node();
+                ctx.leave_rule();
             }
-            pop("}");
+            return true;
+        };
+        return t_dyn_rule(ff);
+    }
+
+    bool simple_type_spec(bool only_check) {
+        if (not has(simple_type_specifiers, peek().uu)) {
+            return false;
         }
-        if (peek().loc == res.loc) {
-            throw t_parse_error(res.loc);
+        if (only_check) {
+            return true;
         }
-        return res;
+        ctx.add_leaf("simple_type_spec", peek().uu);
+        advance();
+        return true;
     }
-    def_rule(enum_specifier);
 
-    _ type_specifier_() {
-        if (has(simple_type_specifiers, peek().uu)) {
-            _ res = t_ast("type_specifier", peek().uu, peek().loc);
-            advance();
-            return res;
-        } else if (cmp("struct") or cmp("union")) {
-            return struct_or_union_specifier();
-        } else if (cmp("enum")) {
-            return enum_specifier();
-        } else {
-            throw t_parse_error(peek().loc);
+    bool typedef_name(bool only_check) {
+        ctx.enter_rule(__func__);
+        if (not (cmp("identifier") and ctx.is_typedef_name(peek().vv))) {
+            ctx.leave_rule();
+            return false;
         }
-    }
-    def_rule(type_specifier);
-
-    _ typedef_name_() {
-        if (cmp("identifier") and ctx.is_typedef_name(peek().vv)) {
-            _ res = t_ast("typedef_name", peek().vv, peek().loc);
-            advance();
-            return res;
-        } else {
-            throw t_parse_error(peek().loc);
+        if (only_check) {
+            ctx.leave_rule();
+            return true;
         }
+        ctx.create_node();
+        syms_(identifier);
+        ctx.leave_node();
+        ctx.leave_rule();
+        return true;
     }
-    def_rule(typedef_name);
 
-    _ struct_declaration_() {
-        _ res = t_ast("struct_declaration", peek().loc);
-        res.add_child(declaration_specifiers());
-        res.add_child(struct_declarator_list());
-        pop(";");
-        return res;
-    }
-    def_rule(struct_declaration);
-
-    _ struct_declaration_list_() {
-        _ res = t_ast("struct_declaration_list", peek().loc);
-        while (true) {
-            try {
-                res.add_child(struct_declaration());
-            } catch (t_parse_error) {
-                break;
-            }
+    bool storage_class_specifier(bool only_check) {
+        if (not (cmp("static") or cmp("extern") or cmp("register")
+                 or cmp("auto") or cmp("typedef"))) {
+            return false;
         }
-        return res;
-    }
-    def_rule(struct_declaration_list);
-
-    _ identifier_() {
-        _ res = t_ast("identifier", peek().loc);
-        res.vv = pop("identifier");
-        return res;
-    }
-    def_rule(identifier);
-
-    _ subdeclarator_() {
-        pop("(");
-        _ e = declarator();
-        pop(")");
-        return e;
-    }
-    def_rule(subdeclarator);
-
-    _ direct_declarator_() {
-        _ res = or_(subdeclarator,
-                    identifier);
-        while (true) {
-            _ loc = peek().loc;
-            if (cmp("[")) {
-                advance();
-                res = t_ast("array", {res});
-                if (cmp("]")) {
-                    advance();
-                } else {
-                    res.add_child(const_exp());
-                    pop("]");
-                }
-            } else if (cmp("(")) {
-                advance();
-                res = t_ast("function", {res});
-                if (cmp(")")) {
-                    advance();
-                } else {
-                    res.add_child(parameter_type_list());
-                    pop(")");
-                }
-            } else {
-                break;
-            }
-            res.loc = loc;
+        if (only_check) {
+            return true;
         }
-        return res;
+        ctx.add_leaf("storage_class_specifier", peek().uu);
+        advance();
+        return true;
     }
-    def_rule(direct_declarator);
 
-    _ declarator_() {
-        if (cmp("*")) {
-            _ res = t_ast("pointer", peek().loc);
-            advance();
-            res.add_child(declarator());
-            return res;
-        } else {
-            return direct_declarator();
+    bool decl_specs(bool only_check) {
+        ctx.enter_rule(__func__);
+        if (not (check(bar(typedef_name,
+                           storage_class_specifier,
+                           type_spec)))) {
+            ctx.leave_rule();
+            return false;
         }
-    }
-    def_rule(declarator);
-
-    _ initializer_() {
-        try {
-            return assign_exp();
-        } catch (t_parse_error) {
-            _ res = t_ast("initializer_list", peek().loc);
-            pop("{");
-            while (true) {
-                res.add_child(initializer());
-                if (not cmp(",")) {
-                    break;
-                }
-                advance();
-                if (cmp("}")) {
-                    break;
-                }
-            }
-            pop("}");
-            return res;
+        if (only_check) {
+            ctx.leave_rule();
+            return true;
         }
-    }
-    def_rule(initializer);
-
-    _ init_declarator_() {
-        _ res = t_ast("init_declarator", peek().loc);
-        res.add_child(declarator());
-        if (cmp("=")) {
-            advance();
-            res.add_child(initializer());
-        }
-        return res;
-    }
-    def_rule(init_declarator);
-
-    _ storage_class_specifier_() {
-        if (cmp("static") or cmp("extern") or cmp("register") or cmp("auto")
-            or cmp("typedef")) {
-            _ res = t_ast("storage_class_specifier", peek().uu, peek().loc);
-            advance();
-            return res;
-        } else {
-            throw t_parse_error(peek().loc);
-        }
-    }
-    def_rule(storage_class_specifier);
-
-    _ declaration_specifiers_() {
-        _ res = t_ast("declaration_specifiers", peek().loc);
+        ctx.create_node();
         _ can_be_typedef_name = true;
         while (true) {
-            try {
-                if (can_be_typedef_name
-                    and cmp("identifier") and ctx.is_typedef_name(peek().vv)) {
-                    res.add_child(typedef_name());
-                    break;
-                } else {
-                    _ x = or_(type_specifier, storage_class_specifier);
-                    res.add_child(x);
-                    if (x.uu != "storage_class_specifier"
-                        and x.uu != "type_qualifier") {
-                        can_be_typedef_name = false;
-                    }
-                }
-            } catch (t_parse_error) {
+            if (can_be_typedef_name and syms(typedef_name)) {
                 break;
+            } else {
+                if (syms(type_spec)) {
+                    can_be_typedef_name = false;
+                } else if (not syms(storage_class_specifier)) {
+                    break;
+                }
             }
         }
-        if (res.children.empty()) {
-            throw t_parse_error(res.loc);
-        }
-        return res;
+        ctx.leave_node();
+        ctx.leave_rule();
+        return true;
     }
-    def_rule(declaration_specifiers);
 
     _ find_id(const _& ast) {
         if (ast.uu == "identifier") {
@@ -807,215 +493,321 @@ namespace {
         }
     }
 
-    _ declaration_() {
-        _ res = t_ast("declaration", peek().loc);
-        res.add_child(declaration_specifiers());
-        _ is_typedef = (storage_class(res[0]) == t_storage_class::_typedef);
-        if (not cmp(";")) {
-            while (true) {
-                _ ini_decl = init_declarator();
-                _ id = find_id(ini_decl);
-                ctx.put(id, is_typedef);
-                res.add_child(ini_decl);
-                if (not cmp(",")) {
-                    break;
-                }
-                advance();
-            }
-        }
-        pop(";");
-        return res;
-    }
-    def_rule(declaration);
-
-    _ compound_statement_() {
+    bool compound_stmt(bool only_check) {
         ctx.enter_scope();
-        _ res = t_ast("compound_statement", peek().loc);
-        pop("{");
-        while (not cmp("}")) {
-            res.add_child(block_item());
-        }
-        advance();
+        _ res = apply_rule(only_check, __func__,
+                           "{", opt(seq(block_item)), "}");
         ctx.leave_scope();
         return res;
     }
-    def_rule(compound_statement);
 
-    _ if_statement_() {
-        _ res = t_ast("if", peek().loc);
-        pop("if");
-        pop("(");
-        res.add_child(exp());
-        pop(")");
-        res.add_child(statement());
-        if (cmp("else")) {
-            advance();
-            res.add_child(statement());
+    bool declaration(bool only_check) {
+        ctx.enter_rule(__func__);
+        _ x = check(decl_specs);
+        if (only_check or not x) {
+            ctx.leave_rule();
+            return x;
         }
-        return res;
-    }
-    def_rule(if_statement);
-
-    _ label_() {
-        _ id = pop("identifier");
-        _ res = t_ast("label", id, peek().loc);
-        pop(":");
-        res.add_child(statement());
-        return res;
-    }
-    def_rule(label);
-
-    _ while_statement_() {
-        _ res = t_ast("while", peek().loc);
-        pop("while");
-        pop("(");
-        res.add_child(exp());
-        pop(")");
-        res.add_child(statement());
-        return res;
-    }
-    def_rule(while_statement);
-
-    _ do_while_statement_() {
-        _ res = t_ast("do_while", peek().loc);
-        pop("do");
-        res.add_child(statement());
-        pop("while");
-        pop("(");
-        res.add_child(exp());
-        pop(")");
-        pop(";");
-        return res;
-    }
-    def_rule(do_while_statement);
-
-    _ for_statement_() {
-        _ res = t_ast("for", peek().loc);
-        pop("for");
-        pop("(");
-        res.add_child(opt(exp));
-        pop(";");
-        res.add_child(opt(exp));
-        pop(";");
-        res.add_child(opt(exp));
-        pop(")");
-        res.add_child(statement());
-        return res;
-    }
-    def_rule(for_statement);
-
-    _ goto_statement_() {
-        _ res = t_ast("goto", peek().loc);
-        pop("goto");
-        res.add_child(identifier());
-        pop(";");
-        return res;
-    }
-    def_rule(goto_statement);
-
-    _ continue_statement_() {
-        _ res = t_ast("continue", peek().loc);
-        pop("continue");
-        pop(";");
-        return res;
-    }
-    def_rule(continue_statement);
-
-    _ break_statement_() {
-        _ res = t_ast("break", peek().loc);
-        pop("break");
-        pop(";");
-        return res;
-    }
-    def_rule(break_statement);
-
-    _ return_statement_() {
-        _ res = t_ast("return", peek().loc);
-        pop("return");
+        ctx.create_node();
+        syms_(decl_specs);
+        _ is_typedef = (storage_class(ctx.last_child())
+                        == t_storage_class::_typedef);
         if (not cmp(";")) {
-            res.add_child(exp());
+            while (true) {
+                syms_(init_decltor);
+                ctx.put(find_id(ctx.last_child()), is_typedef);
+                if (not syms(",")) {
+                    break;
+                }
+            }
         }
-        pop(";");
+        syms_(bar(";", compound_stmt));
+        ctx.leave_node();
+        ctx.leave_rule();
+        return true;
+    }
+
+    bool label_stmt(bool only_check) {
+        ctx.enter_rule(__func__);
+        if (not cmp("identifier")) {
+            ctx.leave_rule();
+            return false;
+        }
+        advance();
+        if (not cmp(":")) {
+            advance(-1);
+            ctx.leave_rule();
+            return false;
+        }
+        advance(-1);
+        if (only_check) {
+            ctx.leave_rule();
+            return true;
+        }
+        ctx.create_node();
+        syms_(identifier, ":", stmt);
+        ctx.leave_node();
+        ctx.leave_rule();
+        return true;
+    }
+
+    bool cast(bool only_check) {
+        ctx.enter_rule(__func__);
+        if (not check(type_name_in_parens)) {
+            ctx.leave_rule();
+            return false;
+        }
+        if (only_check) {
+            ctx.leave_rule();
+            return true;
+        }
+        ctx.create_node();
+        syms_(type_name_in_parens, cast_exp);
+        ctx.leave_node();
+        ctx.leave_rule();
+        return true;
+    }
+
+    bool cond_exp(bool only_check) {
+        if (not check(or_exp)) {
+            return false;
+        }
+        if (only_check) {
+            return true;
+        }
+        syms_(or_exp);
+        if (cmp("?")) {
+            ctx.enter_rule("?:");
+            ctx.replace_node();
+            advance();
+            syms_(subexp, ":", cond_exp);
+            ctx.leave_node();
+            ctx.leave_rule();
+        }
+        return true;
+    }
+
+    bool assign_exp(bool only_check) {
+        if (not check(cond_exp)) {
+            return false;
+        }
+        if (only_check) {
+            return true;
+        }
+        const _ assign_ops = vec<str>{
+            "=", "*=", "/=", "%=", "+=", "-=", "<<=", ">>=", "&=", "^=", "|="
+        };
+        syms_(cond_exp);
+        _ n = 0;
+        while (true) {
+            _ op = peek().uu;
+            if (not has(assign_ops, op)) {
+                break;
+            }
+            ctx.enter_rule(op);
+            ctx.replace_node();
+            advance();
+            syms_(cond_exp);
+            n++;
+        }
+        while (n > 0) {
+            ctx.leave_node();
+            ctx.leave_rule();
+            n--;
+        }
+        return true;
+
+    }
+
+    bool enumtor_put(bool only_check) {
+        if (only_check) {
+            return enumtor(true);
+        }
+        _ res = enumtor(false);
+        ctx.put(ctx.last_child()[0].vv, false);
         return res;
     }
-    def_rule(return_statement);
 
-    _ case_statement_() {
-        _ res = t_ast("case", peek().loc);
-        pop("case");
-        res.add_child(const_exp());
-        pop(":");
-        res.add_child(statement());
-        return res;
-    }
-    def_rule(case_statement);
+    def_aux(prim_exp,
+            bar(prim_exp_0, __("(", subexp, ")")));
 
-    _ default_statement_() {
-        _ res = t_ast("default", peek().loc);
-        pop("default");
-        pop(":");
-        res.add_child(statement());
-        return res;
-    }
-    def_rule(default_statement);
+    def_aux(cast_exp, bar(cast, un_exp));
+    def_aux(mul_exp, left_assoc_op({"*", "/", "%"}, cast_exp));
+    def_aux(add_exp, left_assoc_op({"+", "-"},  mul_exp));
+    def_aux(shift_exp, left_assoc_op({"<<", ">>"}, add_exp));
+    def_aux(rel_exp, left_assoc_op({"<", ">", "<=", ">="}, shift_exp));
+    def_aux(eql_exp, left_assoc_op({"==", "!="}, rel_exp));
+    def_aux(bit_and_exp, left_assoc_op({"&"}, eql_exp));
+    def_aux(bit_xor_exp, left_assoc_op({"^"}, bit_and_exp));
+    def_aux(bit_or_exp, left_assoc_op({"|"}, bit_xor_exp));
+    def_aux(and_exp, left_assoc_op({"&&"}, bit_or_exp));
+    def_aux(or_exp, left_assoc_op({"||"}, and_exp));
 
-    _ switch_statement_() {
-        _ res = t_ast("switch", peek().loc);
-        pop("switch");
-        pop("(");
-        res.add_child(exp());
-        pop(")");
-        res.add_child(statement());
-        return res;
-    }
-    def_rule(switch_statement);
+    def_l(array_subscript,
+          "[", subexp, "]");
+    def_l(func_call,
+          "(", opt(comma_seq(assign_exp)), ")");
+    def_l(member,
+          ".", identifier);
+    def_l(arrow,
+          "->", identifier);
+    def_l(postfix_inc,
+          "++");
+    def_l(postfix_dec,
+          "--");
+    def_aux(postfix_exp,
+            prim_exp, opt(seq(bar(array_subscript,
+                                  func_call,
+                                  member,
+                                  arrow,
+                                  postfix_inc,
+                                  postfix_dec))));
 
-    _ statement_() {
-        return or_(switch_statement,
-                   case_statement,
-                   default_statement,
-                   label,
-                   compound_statement,
-                   if_statement,
-                   while_statement,
-                   do_while_statement,
-                   for_statement,
-                   goto_statement,
-                   continue_statement,
-                   break_statement,
-                   return_statement,
-                   exp_statement);
-    }
-    def_rule(statement);
+    def(adr_op,
+        "&", cast_exp);
+    def(ind_op,
+        "*", cast_exp);
+    def(un_plus,
+        "+", cast_exp);
+    def(un_minus,
+        "-", cast_exp);
+    def(bit_not_op,
+        "~", cast_exp);
+    def(not_op,
+        "!", cast_exp);
+    def(prefix_inc,
+        "++", un_exp);
+    def(prefix_dec,
+        "--", un_exp);
+    def(sizeof_op,
+        "sizeof", bar(type_name_in_parens,
+                      un_exp));
+    def_aux(un_exp,
+            bar(postfix_exp,
+                prefix_inc,
+                prefix_dec,
+                adr_op,
+                ind_op,
+                un_plus,
+                un_minus,
+                bit_not_op,
+                not_op,
+                sizeof_op));
 
-    _ block_item_() { return or_(statement, declaration); }
-    def_rule(block_item);
+    def_aux(subexp, left_assoc_op({","}, assign_exp));
+    def(exp, subexp);
+    def(const_exp, cond_exp);
 
-    _ function_definition_() {
-        _ res = t_ast("function_definition", peek().loc);
-        res.add_child(declaration_specifiers());
-        res.add_child(declarator());
-        res.add_child(compound_statement());
-        return res;
-    }
-    def_rule(function_definition);
+    def_aux(opt_id, bar(identifier, empty_identifier));
 
-    _ external_declaration_() {
-        return or_(declaration, function_definition);
-    }
-    def_rule(external_declaration);
+    def_l(array_decltor,
+          "[", opt(const_exp), "]");
+    def_l(func_decltor,
+          "(", opt(param_types), ")");
+    def_aux(direct_decltor,
+            bar(__("(", decltor, ")"),
+                identifier,
+                empty_identifier),
+            opt(seq(bar(array_decltor,
+                        func_decltor))));
+    def(ptr_decltor,
+        "*", decltor);
+    def_aux(decltor,
+            bar(ptr_decltor, direct_decltor));
+
+    def(type_name, decl_specs, decltor);
+
+    def(param_decl,
+        decl_specs, decltor);
+    def(ellipsis,
+        "...");
+    def(param_types,
+        comma_seq(param_decl), opt(",", ellipsis));
+
+    def(if_stmt,
+        "if", "(", exp, ")", stmt, opt("else", stmt));
+    def(opt_exp,
+        opt(exp));
+    def(for_stmt,
+        "for", "(", opt_exp, ";", opt_exp, ";", opt_exp, ")", stmt);
+    def(break_stmt,
+        "break", ";");
+    def(continue_stmt,
+        "continue", ";");
+    def(switch_stmt,
+        "switch", "(", exp, ")", stmt);
+    def(case_stmt,
+        "case", const_exp, ":", stmt);
+    def(goto_stmt,
+        "goto", identifier, ";");
+    def(default_stmt,
+        "default", ":", stmt);
+    def(do_while_stmt,
+        "do", stmt, "while", "(", exp, ")", ";");
+    def(while_stmt,
+        "while", "(", exp, ")", stmt);
+    def(return_stmt,
+        "return", opt(exp), ";");
+    def(exp_stmt,
+        bar(";", __(exp, ";")));
+
+    def(struct_decltors,
+        comma_seq(decltor));
+    def(struct_spec,
+        "struct", opt_id, opt("{", struct_decls, "}"));
+
+    def(enumtor,
+        identifier, opt("=", const_exp));
+
+    def(enumtors,
+        "{", comma_seq(enumtor_put), "}");
+    def(enum_spec,
+        "enum", opt_id, opt(enumtors));
+    def_aux(type_spec,
+            bar(simple_type_spec, struct_spec, enum_spec));
+
+    def(struct_decl,
+        decl_specs, struct_decltors, ";");
+    def(struct_decls,
+        seq(struct_decl));
+
+    def_aux(initzer,
+            bar(assign_exp, initzers));
+    def(initzers,
+        "{", comma_seq(initzer), opt(","), "}");
+    def(init_decltor,
+        decltor, opt("=", initzer));
+
+    def_aux(block_item,
+            bar(declaration,
+                stmt));
+
+    def_aux(stmt,
+            bar(switch_stmt,
+                case_stmt,
+                default_stmt,
+                label_stmt,
+                compound_stmt,
+                if_stmt,
+                while_stmt,
+                do_while_stmt,
+                for_stmt,
+                goto_stmt,
+                continue_stmt,
+                break_stmt,
+                return_stmt,
+                exp_stmt));
+    def(program, opt(seq(declaration)), "eof");
 }
 
 t_ast parse_exp(std::list<t_lexeme>::const_iterator start) {
-    init(start);
-    return const_exp();
+    ctx.init(start);
+    syms_(const_exp, "eof");
+    return ctx.get_result();
 }
 
 t_ast parse_program(std::list<t_lexeme>::const_iterator start) {
-    init(start);
-    _ res = t_ast("program", peek().loc);
-    while (not at_end()) {
-        res.add_child(external_declaration());
-    }
-    return res;
+    ctx.init(start);
+    syms_(program);
+    return ctx.get_result();
 }

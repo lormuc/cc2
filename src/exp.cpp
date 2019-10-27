@@ -18,6 +18,7 @@ public:
 namespace {
     t_val gen_neg(const t_val& x, const t_ctx& ctx);
     t_val gen_eq(t_val x, t_val y, const t_ctx& ctx);
+    t_val exp(const t_ast& ast, t_ctx& ctx, bool convert = true);
 
     void err(const str& str, t_loc loc) {
         throw t_compile_error(str, loc);
@@ -78,7 +79,7 @@ namespace {
     _ compile_time_eval(const t_ast& ast, t_ctx& ctx, bool c = true) {
         _ o = prog.silence();
         prog.silence(true);
-        _ res = gen_exp(ast, ctx, c);
+        _ res = exp(ast, ctx, c);
         prog.silence(o);
         return res;
     }
@@ -385,10 +386,10 @@ namespace {
         }
     }
 
-    t_val gen_exp_(const t_ast& ast, t_ctx& ctx, bool convert) {
+    t_val exp_(const t_ast& ast, t_ctx& ctx, bool convert) {
         _ assign_op = [&](_& op) {
-            _ x = gen_exp(ast[0], ctx, false);
-            _ y = gen_exp(ast[1], ctx);
+            _ x = exp(ast[0], ctx, false);
+            _ y = exp(ast[1], ctx);
             _ xv = convert_lvalue(x, ctx);
             _ z = op(xv, y, ctx);
             return gen_convert_assign(x, z, ctx);
@@ -464,38 +465,38 @@ namespace {
             } else {
                 res = ctx.get_id_data(ast.vv).val;
             }
-        } else if (op == "+" and arg_cnt == 1) {
-            res = gen_exp(ast[0], ctx);
+        } else if (op == "un_plus" and arg_cnt == 1) {
+            res = exp(ast[0], ctx);
             if (not res.type().is_arithmetic()) {
                 throw t_bad_operands();
             }
             gen_int_promotion(res, ctx);
-        } else if (op == "&" and arg_cnt == 1) {
-            _ w = gen_exp(ast[0], ctx, false);
+        } else if (op == "adr_op" and arg_cnt == 1) {
+            _ w = exp(ast[0], ctx, false);
             if (not (w.is_lvalue() or w.type().is_function())) {
                 throw t_bad_operands();
             }
             res = adr(w);
-        } else if (op == "*" and arg_cnt == 1) {
-            _ e = gen_exp(ast[0], ctx);
+        } else if (op == "ind_op" and arg_cnt == 1) {
+            _ e = exp(ast[0], ctx);
             if (not e.type().is_pointer()) {
                 throw t_bad_operands();
             }
             res = dereference(e, ctx);
-        } else if (op == "-" and arg_cnt == 1) {
-            _ e = gen_exp(ast[0], ctx);
+        } else if (op == "un_minus" and arg_cnt == 1) {
+            _ e = exp(ast[0], ctx);
             if (not e.type().is_arithmetic()) {
                 throw t_bad_operands();
             }
             res = gen_neg(e, ctx);
-        } else if (op == "!" and arg_cnt == 1) {
-            _ e = gen_exp(ast[0], ctx);
+        } else if (op == "not_op" and arg_cnt == 1) {
+            _ e = exp(ast[0], ctx);
             if (not e.type().is_scalar()) {
                 throw t_bad_operands();
             }
             res = gen_is_zero(e, ctx);
-        } else if (op == "~" and arg_cnt == 1) {
-            x = gen_exp(ast[0], ctx);
+        } else if (op == "bit_not_op" and arg_cnt == 1) {
+            x = exp(ast[0], ctx);
             if (not x.type().is_integral()) {
                 throw t_bad_operands();
             }
@@ -505,72 +506,72 @@ namespace {
             }
             res = t_val(prog.bit_not(ctx.as(x)), x.type());
         } else if (op == "=") {
-            res = gen_convert_assign(gen_exp(ast[0], ctx, false),
-                                     gen_exp(ast[1], ctx),
+            res = gen_convert_assign(exp(ast[0], ctx, false),
+                                     exp(ast[1], ctx),
                                      ctx);
         } else if (op == "+") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_add(x, y, ctx);
         } else if (op == "-") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_sub(x, y, ctx);
         } else if (op == "*") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_mul(x, y, ctx);
         } else if (op == "/") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_div(x, y, ctx);
         } else if (op == "%") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_mod(x, y, ctx);
         } else if (op == "<<") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_shl(x, y, ctx);
         } else if (op == ">>") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_shr(x, y, ctx);
         } else if (op == "<=") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_is_zero(gen_lt(y, x, ctx), ctx);
         } else if (op == "<") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_lt(x, y, ctx);
         } else if (op == ">") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_lt(y, x, ctx);
         } else if (op == ">=") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_is_zero(gen_lt(x, y, ctx), ctx);
         } else if (op == "==") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_eq(x, y, ctx);
         } else if (op == "!=") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_is_zero(gen_eq(x, y, ctx), ctx);
         } else if (op == "&") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_and(x, y, ctx);
         } else if (op == "^") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_xor(x, y, ctx);
         } else if (op == "|") {
-            x = gen_exp(ast[0], ctx);
-            y = gen_exp(ast[1], ctx);
+            x = exp(ast[0], ctx);
+            y = exp(ast[1], ctx);
             res = gen_or(x, y, ctx);
         } else if (op == "&&") {
             _ xt = compile_time_eval(ast[0], ctx);
@@ -586,11 +587,11 @@ namespace {
                 _ l1 = make_label();
                 _ l2 = make_label();
                 _ l3 = make_label();
-                x = gen_exp(ast[0], ctx);
+                x = exp(ast[0], ctx);
                 put_label(l0);
                 prog.cond_br(gen_is_zero_i1(x, ctx), l1, l2);
                 put_label(l2, false);
-                y = gen_exp(ast[1], ctx);
+                y = exp(ast[1], ctx);
                 if (not (x.type().is_scalar() and x.type().is_scalar())) {
                     throw t_bad_operands();
                 }
@@ -614,11 +615,11 @@ namespace {
                 _ l1 = make_label();
                 _ l2 = make_label();
                 _ l3 = make_label();
-                x = gen_exp(ast[0], ctx);
+                x = exp(ast[0], ctx);
                 put_label(l0);
                 prog.cond_br(gen_is_zero_i1(x, ctx), l2, l1);
                 put_label(l2, false);
-                y = gen_exp(ast[1], ctx);
+                y = exp(ast[1], ctx);
                 if (not (x.type().is_scalar() and y.type().is_scalar())) {
                     throw t_bad_operands();
                 }
@@ -649,10 +650,10 @@ namespace {
         } else if (op == "|=") {
             res = assign_op(gen_or);
         } else if (op == ",") {
-            gen_exp(ast[0], ctx);
-            res = gen_exp(ast[1], ctx);
-        } else if (op == "function_call") {
-            x = gen_exp(ast[0], ctx);
+            exp(ast[0], ctx);
+            res = exp(ast[1], ctx);
+        } else if (op == "func_call") {
+            x = exp(ast[0], ctx);
             if (not (x.type().is_pointer() and
                      x.type().pointee_type().is_function())) {
                 throw t_bad_operands();
@@ -665,7 +666,7 @@ namespace {
             }
             vec<t_asm_val> args;
             for (size_t i = 0; i < arg_cnt; i++) {
-                _ e = gen_exp(ast[i+1], ctx);
+                _ e = exp(ast[i+1], ctx);
                 if (t.is_variadic() and i+1 >= params.size()) {
                     gen_int_promotion(e, ctx);
                     if (e.type() == float_type) {
@@ -683,18 +684,18 @@ namespace {
             } else {
                 res = t_val(prog.call(rt.as(), x.as(), args), t.return_type());
             }
-        } else if (op == "struct_member") {
-            x = gen_exp(ast[0], ctx, false);
+        } else if (op == "member") {
+            x = exp(ast[0], ctx, false);
             res = struct_or_union_member(x, ast[1].vv, ctx);
         } else if (op == "arrow") {
-            x = dereference(gen_exp(ast[0], ctx), ctx);
+            x = dereference(exp(ast[0], ctx), ctx);
             res = struct_or_union_member(x, ast[1].vv, ctx);
         } else if (op == "array_subscript") {
-            _ z = gen_add(gen_exp(ast[0], ctx),
-                          gen_exp(ast[1], ctx), ctx);
+            _ z = gen_add(exp(ast[0], ctx),
+                          exp(ast[1], ctx), ctx);
             res = dereference(z, ctx);
-        } else if (op == "postfix_increment") {
-            _ e = gen_exp(ast[0], ctx, false);
+        } else if (op == "postfix_inc") {
+            _ e = exp(ast[0], ctx, false);
             if (not unqualify(e.type()).is_scalar()
                 or not is_modifiable_lvalue(e)) {
                 throw t_bad_operands();
@@ -702,8 +703,8 @@ namespace {
             res = convert_lvalue(e, ctx);
             _ z = gen_add(res, 1, ctx);
             gen_convert_assign(e, z, ctx);
-        } else if (op == "postfix_decrement") {
-            _ e = gen_exp(ast[0], ctx, false);
+        } else if (op == "postfix_dec") {
+            _ e = exp(ast[0], ctx, false);
             if (not unqualify(e.type()).is_scalar()
                 or not is_modifiable_lvalue(e)) {
                 throw t_bad_operands();
@@ -711,8 +712,8 @@ namespace {
             res = convert_lvalue(e, ctx);
             _ z = gen_sub(res, 1, ctx);
             gen_convert_assign(e, z, ctx);
-        } else if (op == "prefix_increment") {
-            _ e = gen_exp(ast[0], ctx, false);
+        } else if (op == "prefix_inc") {
+            _ e = exp(ast[0], ctx, false);
             if (not unqualify(e.type()).is_scalar()
                 or not is_modifiable_lvalue(e)) {
                 throw t_bad_operands();
@@ -720,8 +721,8 @@ namespace {
             _ z = convert_lvalue(e, ctx);
             res = gen_add(z, 1, ctx);
             gen_convert_assign(e, res, ctx);
-        } else if (op == "prefix_decrement") {
-            _ e = gen_exp(ast[0], ctx, false);
+        } else if (op == "prefix_dec") {
+            _ e = exp(ast[0], ctx, false);
             if (not unqualify(e.type()).is_scalar()
                 or not is_modifiable_lvalue(e)) {
                 throw t_bad_operands();
@@ -730,21 +731,23 @@ namespace {
             res = gen_sub(z, 1, ctx);
             gen_convert_assign(e, res, ctx);
         } else if (op == "cast") {
-            _ e = gen_exp(ast[1], ctx);
+            _ e = exp(ast[1], ctx);
             _ t = make_type(ast[0], ctx);
             if (not (t == void_type or (e.type().is_scalar()
                                         and unqualify(t).is_scalar()))) {
                 throw t_bad_operands();
             }
             res = gen_conversion(t, e, ctx);
-        } else if (op == "sizeof_type") {
-            _ type = make_type(ast[0], ctx);
-            res = t_val(type.size());
-        } else if (op == "sizeof_exp") {
-            x = compile_time_eval(ast[0], ctx, false);
-            res = t_val(x.type().size());
+        } else if (op == "sizeof_op") {
+            if (ast[0].uu == "type_name") {
+                _ type = make_type(ast[0], ctx);
+                res = t_val(type.size());
+            } else {
+                x = compile_time_eval(ast[0], ctx, false);
+                res = t_val(x.type().size());
+            }
         } else if (op == "?:") {
-            x = gen_exp(ast[0], ctx);
+            x = exp(ast[0], ctx);
             constrain(x.type().is_scalar(), "operand is not a scalar",
                       ast[0].loc);
             _ yy = compile_time_eval(ast[1], ctx);
@@ -761,7 +764,7 @@ namespace {
                           ast.loc);
             }
             if (x.is_constant()) {
-                _ w = gen_exp(ast[x.is_false() ? 2 : 1], ctx);
+                _ w = exp(ast[x.is_false() ? 2 : 1], ctx);
                 res = gen_conversion(common_type, w, ctx);
             } else {
                 _ cond_true = make_label();
@@ -772,12 +775,12 @@ namespace {
                              cond_false, cond_true);
 
                 put_label(cond_true, false);
-                y = gen_exp(ast[1], ctx);
+                y = exp(ast[1], ctx);
                 _ val_if_true = gen_conversion(common_type, y, ctx);
                 prog.br(end);
 
                 put_label(cond_false, false);
-                z = gen_exp(ast[2], ctx);
+                z = exp(ast[2], ctx);
                 _ val_if_false = gen_conversion(common_type, z, ctx);
                 _ cond_false_end = make_label();
                 put_label(cond_false_end);
@@ -794,6 +797,22 @@ namespace {
             res = convert_function(res, ctx);
             res = convert_array(res, ctx);
             res = convert_lvalue(res, ctx);
+        }
+        return res;
+    }
+
+    t_val exp(const t_ast& ast, t_ctx& ctx, bool convert_lvalue) {
+        t_val res;
+        try {
+            res = exp_(ast, ctx, convert_lvalue);
+        } catch (t_bad_operands) {
+            _ op = ast.uu;
+            if (ast.vv != "") {
+                op += " " + ast.vv;
+            }
+            err("bad operands to " + op, ast.loc);
+        } catch (const t_conversion_error& e) {
+            err(e.what(), ast.loc);
         }
         return res;
     }
@@ -917,18 +936,9 @@ t_val gen_conversion(const t_type& t, const t_val& v, const t_ctx& ctx) {
     return t_val(res_id, t);
 }
 
-t_val gen_exp(const t_ast& ast, t_ctx& ctx, bool convert_lvalue) {
-    t_val res;
-    try {
-        res = gen_exp_(ast, ctx, convert_lvalue);
-    } catch (t_bad_operands) {
-        _ op = ast.uu;
-        if (ast.vv != "") {
-            op += " " + ast.vv;
-        }
-        err("bad operands to " + op, ast.loc);
-    } catch (const t_conversion_error& e) {
-        err(e.what(), ast.loc);
+t_val gen_exp(const t_ast& ast, t_ctx& ctx) {
+    if (ast.uu == "exp" or ast.uu == "const_exp") {
+        return gen_exp(ast[0], ctx);
     }
-    return res;
+    return exp(ast, ctx);
 }

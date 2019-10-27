@@ -20,7 +20,7 @@
 #include "pp.hpp"
 
 void print(const t_ast& ast, std::ostream& os, unsigned level = 0) {
-    for (_ i = 0u; i < 1 * level; i++) {
+    for (_ i = 0u; i < 4 * level; i++) {
         os << " ";
     }
     os << "(" << ast.uu << ")";
