@@ -325,7 +325,6 @@ namespace {
     t_rule init_decltor;
     t_rule initzers;
     t_rule type_spec;
-    t_rule struct_decls;
     t_rule cast_exp;
     t_rule exp;
     t_rule block_item;
@@ -753,8 +752,14 @@ namespace {
 
     def(struct_decltors,
         comma_seq(decltor));
+    def(struct_decl,
+        decl_specs, struct_decltors, ";");
+    def(struct_decls,
+        seq(struct_decl));
     def(struct_spec,
         "struct", opt_id, opt("{", struct_decls, "}"));
+    def(union_spec,
+        "union", opt_id, opt("{", struct_decls, "}"));
 
     def(enumtor,
         identifier, opt("=", const_exp));
@@ -764,12 +769,7 @@ namespace {
     def(enum_spec,
         "enum", opt_id, opt(enumtors));
     def_aux(type_spec,
-            bar(simple_type_spec, struct_spec, enum_spec));
-
-    def(struct_decl,
-        decl_specs, struct_decltors, ";");
-    def(struct_decls,
-        seq(struct_decl));
+            bar(simple_type_spec, struct_spec, union_spec, enum_spec));
 
     def_aux(initzer,
             bar(assign_exp, initzers));

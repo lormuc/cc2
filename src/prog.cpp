@@ -164,8 +164,11 @@ str t_prog::apply_rel(const str& op, const t_asm_val& x,
     return convert("zext", {"i1", tmp}, "i32");
 }
 
-str t_prog::convert(const str& op, const t_asm_val& x,
-                    const str& t) {
+str t_prog::convert(const str& op, const t_asm_val& x, const str& t,
+                    bool is_constant) {
+    if (is_constant) {
+        return op + " (" + x.join() + " to " + t + ")";
+    }
     return aa(op + " " + x.join() + " to " + t);
 }
 

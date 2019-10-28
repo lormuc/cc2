@@ -44,6 +44,7 @@ class t_type {
         vec<str> field_names;
         vec<t_type> params;
         vec<t_type> children;
+        size_t union_max_type_idx = -1;
         bool operator==(const t_type_aux& x) const {
             return (kind == x.kind
                     and size == x.size
@@ -118,8 +119,11 @@ t_type make_basic_type(const str&);
 t_type make_pointer_type(t_type);
 t_type make_array_type(t_type);
 t_type make_array_type(t_type, size_t);
-t_type make_struct_type(const str&, vec<str>, vec<t_type>, const str&);
-t_type make_struct_type(const str&, const str&);
+t_type make_struct_type(const str&, vec<str>, vec<t_type>, const str&,
+                        bool = false);
+t_type make_struct_type(const str&, const str&, bool = false);
+t_type make_union_type(const str&, vec<str>, vec<t_type>, const str&);
+t_type make_union_type(const str&, const str&);
 t_type make_enum_type(const str&);
 t_type unqualify(t_type);
 bool compatible(t_type, t_type);

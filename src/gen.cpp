@@ -605,15 +605,15 @@ str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
     }
 }
 
-t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
+t_type struct_specifier(const t_ast& ast, t_ctx& ctx, bool is_union) {
     _ struct_name = ast[0].vv;
     if (ast.children.size() == 1) {
         try {
             return ctx.get_tag_data(struct_name).type;
         } catch (t_undefined_name_error) {
-            _ type = make_struct_type(struct_name, prog.make_new_id());
-            ctx.put_struct(struct_name, {type, type.as()});
-            return type;
+            _ t = make_struct_type(struct_name, prog.make_new_id(), is_union);
+            ctx.put_struct(struct_name, {t, t.as()});
+            return t;
         }
     }
     vec<str> field_name;
@@ -638,14 +638,16 @@ t_type struct_specifier(const t_ast& ast, t_ctx& ctx) {
     try {
         _ data = ctx.scope_get_tag_data(struct_name);
         id = data.as;
-        if (not (data.type.is_struct() and data.type.fields().empty())) {
+        if (not (((data.type.is_struct() and not is_union)
+                  or (data.type.is_union() and is_union))
+                 and data.type.fields().empty())) {
             err("redefinition", ast.loc);
         }
     } catch (t_undefined_name_error) {
         id = prog.make_new_id();
     }
     _ type = make_struct_type(struct_name, std::move(field_name),
-                              std::move(field_type), id);
+                              std::move(field_type), id, is_union);
     ctx.put_struct(struct_name, {type, id});
     prog.def_struct(id, type.as(true));
     return type;
@@ -740,7 +742,9 @@ t_type make_base_type(const t_ast& ast, t_ctx& ctx) {
             continue;
         }
         if (c.uu == "struct_spec") {
-            return struct_specifier(c, ctx);
+            return struct_specifier(c, ctx, false);
+        } else if (c.uu == "union_spec") {
+            return struct_specifier(c, ctx, true);
         } else if (c.uu == "enum_spec") {
             return enum_specifier(c, ctx);
         } else if (c.uu == "typedef_name") {

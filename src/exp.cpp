@@ -165,7 +165,17 @@ namespace {
             throw t_bad_operands();
         }
         _ res_type = x.type().field(idx);
-        _ res_id = prog.member(ctx.as(x), idx, x.is_constant());
+        str res_id;
+        if (x.type().is_union()) {
+            _ w = res_type;
+            if (x.is_lvalue()) {
+                w = make_pointer_type(w);
+            }
+            res_id = prog.convert("bitcast", ctx.as(x), w.as(),
+                                  x.is_constant());
+        } else {
+            res_id = prog.member(ctx.as(x), idx, x.is_constant());
+        }
         return t_val(res_id, res_type, x.is_lvalue(), x.is_constant());
     }
 

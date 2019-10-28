@@ -56,20 +56,30 @@ t_type::t_type(t_type_kind k, const str& n)
 t_type::t_type(t_type_kind kind, const str& name,
                vec<str> field_names, vec<t_type> field_types, const str& as)
     : ptr(new t_type_aux) {
-    assert(kind == t_type_kind::_struct);
+    assert(kind == t_type_kind::_struct or kind == t_type_kind::_union);
+    (*ptr).kind = kind;
     _ len = field_types.size();
     size_t _alignment = 1;
     size_t _size = 0;
     for (size_t i = 0; i < len; i++) {
         assert(field_types[i].is_complete());
-        _size += field_types[i].size();
         _alignment = std::max(_alignment, field_types[i].alignment());
-        _ al = ((i+1 < len) ? field_types[i+1].alignment() : _alignment);
-        if ((_size % al) != 0) {
-            _size += al - (_size % al);
+        if (is_union()) {
+            _size = std::max(_size, field_types[i].size());
+            (*ptr).union_max_type_idx = i;
+        } else {
+            _size += field_types[i].size();
+            _ al = ((i+1 < len) ? field_types[i+1].alignment() : _alignment);
+            if ((_size % al) != 0) {
+                _size += al - (_size % al);
+            }
         }
     }
-    (*ptr).kind = kind;
+    if (is_union()) {
+        if ((_size % _alignment) != 0) {
+            _size += _alignment - (_size % _alignment);
+        }
+    }
     (*ptr).alignment = _alignment;
     (*ptr).size = _size;
     (*ptr).name = name;
@@ -229,13 +239,25 @@ t_type make_array_type(t_type t, size_t l) {
 }
 
 t_type make_struct_type(const str& name, vec<str> field_names,
+                        vec<t_type> field_types, const str& _as,
+                        bool is_union) {
+    return t_type((is_union ? t_type_kind::_union : t_type_kind::_struct),
+                  name, std::move(field_names), std::move(field_types), _as);
+}
+
+t_type make_struct_type(const str& name, const str& _as, bool is_union) {
+    return t_type((is_union ? t_type_kind::_union : t_type_kind::_struct),
+                  name, {}, {}, _as);
+}
+
+t_type make_union_type(const str& name, vec<str> field_names,
                         vec<t_type> field_types, const str& _as) {
-    return t_type(t_type_kind::_struct, name, std::move(field_names),
+    return t_type(t_type_kind::_union, name, std::move(field_names),
                   std::move(field_types), _as);
 }
 
-t_type make_struct_type(const str& name, const str& _as) {
-    return t_type(t_type_kind::_struct, name, {}, {}, _as);
+t_type make_union_type(const str& name, const str& _as) {
+    return t_type(t_type_kind::_union, name, {}, {}, _as);
 }
 
 t_type make_enum_type(const str& name) {
@@ -378,6 +400,14 @@ str t_type::as(bool expand) const {
                 start = false;
                 res += field.as();
             }
+            res += " }";
+        } else {
+            res += (*ptr).as;
+        }
+    } else if (t.is_union()) {
+        if (expand) {
+            res += "{ ";
+            res += t.fields()[(*ptr).union_max_type_idx].as();
             res += " }";
         } else {
             res += (*ptr).as;

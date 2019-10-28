@@ -55,7 +55,7 @@ public:
     str load(const t_asm_val& v);
     void store(const t_asm_val& x, const t_asm_val& y);
     str apply(const str& op, const t_asm_val& x, const t_asm_val& y);
-    str convert(const str& op, const t_asm_val& x, const str& t);
+    str convert(const str& op, const t_asm_val& x, const str& t, bool = false);
     str apply_rel(const str& op, const t_asm_val& x, const t_asm_val& y);
     str apply_rel(const str& op, const t_asm_val& x, const str& y);
     str inc_ptr(const t_asm_val& x, const t_asm_val& y,
