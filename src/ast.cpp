@@ -60,7 +60,14 @@ public:
         return *pos;
     }
     void advance(int n = 1) {
-        std::advance(pos, n);
+        if ((*pos).uu != "eof") {
+            std::advance(pos, n);
+            if (n == 1) {
+                while ((*pos).uu == "const" or (*pos).uu == "volatile") {
+                    pos++;
+                }
+            }
+        }
     }
     str cur_rule() const {
         if (rule_names.empty()) {

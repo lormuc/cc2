@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
     size_t input_file_idx;
     try {
         input_file_idx = fm.read_file(input_file);
-    } catch (const std::ifstream::failure& e) {
+    } catch (const std::exception& e) {
         die(input_file + ": " + e.what());
     }
 

@@ -90,9 +90,6 @@ str t_prog::assemble() {
     res += "\n";
     res += asm_funcs;
     res += "\n";
-    res += "declare i32 @printf(i8*, ...)\n";
-    res += "declare i32 @snprintf(i8*, i64, i8*, ...)\n";
-    res += "declare i8* @calloc(i64, i64)\n";
     res += decls;
     return res;
 }
@@ -101,7 +98,8 @@ void t_prog::noop() {
     aa("add i1 0, 0");
 }
 
-void t_prog::declare(const str& ret_type, const str& name, vec<str> params) {
+void t_prog::declare(const str& ret_type, const str& name, vec<str> params,
+                     bool is_variadic) {
     str params_str;
     for (_& p : params) {
         if (params_str.empty()) {
@@ -110,11 +108,15 @@ void t_prog::declare(const str& ret_type, const str& name, vec<str> params) {
             params_str += ", " + p;
         }
     }
+    if (is_variadic) {
+        params_str += ", ...";
+    }
     decls += "declare " + ret_type + " @" + name + "(" + params_str + ")\n";
 }
 
-void t_prog::declare_external(const str& name, const str& type) {
+str t_prog::declare_external(const str& name, const str& type) {
     append(global_storage, "@" + name + " = external global " + type + "\n");
+    return "@" + name;
 }
 
 str t_prog::def_global(const str& name, const str& val, bool _internal) {

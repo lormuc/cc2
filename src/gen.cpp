@@ -239,20 +239,21 @@ namespace {
                               "array of incomplete type", ast[i][0].loc);
                     type = complete_array(type, ast[i][1]);
                 }
-                if (type.is_incomplete()) {
+                if (_linkage != t_linkage::external and type.is_incomplete()) {
                     err("type has an unknown size", ast[i].loc);
                 }
-                if ((_linkage != t_linkage::none and ctx.is_global())
-                    or (_linkage == t_linkage::none and is_static)) {
+                if (sc == t_storage_class::_extern and not has_initializer) {
+                    _ id = prog.declare_external(name, type.as());
+                    ctx.put_id(name, t_val(id, type, true, true), _linkage);
+                } else if ((_linkage != t_linkage::none and ctx.is_global())
+                           or (_linkage == t_linkage::none and is_static)) {
                     const _& initer = (has_initializer ? ast[i][1] : t_ast());
                     _ initer_as = static_val_as(type, initer, ctx);
                     _ id = prog.def_global(name, initer_as,
                                            _linkage != t_linkage::external);
                     _ val = t_val(id, type, true, true);
                     ctx.put_id(name, val, _linkage);
-                } else if (_linkage == t_linkage::external) {
-                    prog.declare_external(name, type.as());
-                } else if (_linkage == t_linkage::none) {
+                }  else if (_linkage == t_linkage::none) {
                     _ id = prog.def_on_stack(type.as());
                     _ val = t_val(id, type, true);
                     ctx.def_id(name, val);
@@ -533,13 +534,6 @@ void put_label(const str& s, bool f) {
     prog.put_label(s, f);
 }
 
-namespace {
-    _ is_param_list_empty(const vec<t_ast>& ast) {
-        return (ast.empty() or (ast[0][0][0].uu == "simple_type_spec"
-                                and ast[0][0][0].vv == "void"));
-    }
-}
-
 str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
                       bool is_func_def) {
     _& kind = ast.uu;
@@ -566,31 +560,32 @@ str unpack_declarator(t_type& type, const t_ast& ast, t_ctx& ctx,
             _ is_variadic = false;
             vec<t_type> params;
             _& param_list = ast[1].children;
-            if (not is_param_list_empty(param_list)) {
-                for (_& p : param_list) {
-                    if (p.uu == "...") {
-                        is_variadic = true;
-                    } else {
-                        _ param_type = make_base_type(p[0], ctx);
-                        str param_name;
-                        if (p.children.size() == 2) {
-                            param_name = unpack_declarator(param_type, p[1],
-                                                           ctx);
-                        }
-                        param_type = ctx.complete_type(param_type);
-                        if (param_type.is_function()) {
-                            param_type = make_pointer_type(param_type);
-                        } else if (param_type.is_array()) {
-                            param_type = param_type.element_type();
-                            param_type = make_pointer_type(param_type);
-                        }
-                        if (is_func_def and ast[0].uu == "identifier") {
-                            _ p_as = prog.func_param(param_type.as());
-                            ctx.def_id(param_name, t_val(p_as, param_type,
-                                                         true));
-                        }
-                        params.push_back(param_type);
+            for (_& p : param_list) {
+                if (p.uu == "ellipsis") {
+                    is_variadic = true;
+                } else {
+                    _ param_type = make_base_type(p[0], ctx);
+                    str param_name;
+                    if (p.children.size() == 2) {
+                        param_name = unpack_declarator(param_type, p[1],
+                                                       ctx);
                     }
+                    param_type = ctx.complete_type(param_type);
+                    if (param_type == void_type) {
+                        break;
+                    }
+                    if (param_type.is_function()) {
+                        param_type = make_pointer_type(param_type);
+                    } else if (param_type.is_array()) {
+                        param_type = param_type.element_type();
+                        param_type = make_pointer_type(param_type);
+                    }
+                    if (is_func_def and ast[0].uu == "identifier") {
+                        _ p_as = prog.func_param(param_type.as());
+                        ctx.def_id(param_name, t_val(p_as, param_type,
+                                                     true));
+                    }
+                    params.push_back(param_type);
                 }
             }
             type = make_func_type(type, params, is_variadic);
@@ -794,7 +789,8 @@ void gen_program(const t_ast& ast) {
             for (_& param : t.params()) {
                 params_as.push_back(param.as());
             }
-            prog.declare(t.return_type().as(), name, params_as);
+            prog.declare(t.return_type().as(), name, params_as,
+                         t.is_variadic());
         }
     }
 }

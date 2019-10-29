@@ -190,6 +190,9 @@ class t_macros {
 public:
     t_macros(t_file_manager& file_manager_)
         : file_manager(file_manager_) {
+        macros["__STDC__"] = {{t_pp_lexeme{"pp_number", "1"}}};
+        macros["__x86_64__"] = {{}};
+        macros["__STRICT_ANSI__"] = {{}};
     }
 
     void erase(const t_pp_lexeme& lx) {
@@ -211,8 +214,6 @@ public:
         str val;
         if (id == "__LINE__") {
             val = std::to_string(lx.loc.line());
-        } else if (id == "__STDC__") {
-            val = "1";
         } else if (id == "__FILE__") {
             _ path = file_manager.get_path(lx.loc.file_idx());
             val = "\"" + str_lit(path) + "\"";
@@ -296,6 +297,7 @@ namespace {
                 }
                 expect("identifier", i);
                 _ id = *i;
+
                 if (in_parens) {
                     step(i);
                 }
@@ -472,20 +474,25 @@ namespace {
 
     t_pp_iter expand(t_pp_seq& ls, t_pp_iter i, t_pp_iter finish,
                      const t_macros& macros) {
-        if (i == finish) {
-            return i;
+        _ macro = t_macro();
+        _ i0 = i;
+        _ initial = true;
+        while (true) {
+            if (i == finish) {
+                return i0;
+            }
+            if ((*i).kind == "identifier"
+                and (*i).hide_set.count((*i).val) == 0) {
+                _ macro_find_res = macros.find(*i);
+                if (macro_find_res.success) {
+                    macro = macro_find_res.macro;
+                    break;
+                }
+            }
+            i++;
+            initial = false;
         }
         _& hs = (*i).hide_set;
-        if ((*i).kind != "identifier" or hs.count((*i).val) != 0) {
-            expand(ls, next(i), finish, macros);
-            return i;
-        }
-        _ macro_find_res = macros.find(*i);
-        if (not macro_find_res.success) {
-            expand(ls, next(i), finish, macros);
-            return i;
-        }
-        _& macro = macro_find_res.macro;
         if (macro.is_func_like) {
             _ j = i;
             j++;
@@ -495,7 +502,7 @@ namespace {
             }
             if (j == finish or (*j).kind != "(") {
                 expand(ls, next(i), finish, macros);
-                return i;
+                return i0;
             }
             j++;
             _ args = collect_args(j, finish);
@@ -514,7 +521,11 @@ namespace {
                        macros);
             i = ls.erase(i, j);
             i = ls.insert(i, r.begin(), r.end());
-            return expand(ls, i, finish, macros);
+            expand(ls, i, finish, macros);
+            if (initial) {
+                i0 = i;
+            }
+            return i0;
         } else {
             _ nhs = hs;
             nhs.insert((*i).val);
@@ -523,7 +534,11 @@ namespace {
             substitute(mr.begin(), mr.end(), {}, {}, nhs, r, macros);
             i = ls.erase(i);
             i = ls.insert(i, r.begin(), r.end());
-            return expand(ls, i, finish, macros);
+            expand(ls, i, finish, macros);
+            if (initial) {
+                i0 = i;
+            }
+            return i0;
         }
     }
 
@@ -666,6 +681,7 @@ class t_preprocessor {
     _ include_search(const vec<str>& dirs, const str& rel_path) {
         for (_& dir : dirs) {
             _ abs_path = dir + "/" + rel_path;
+            // cout << "search " << abs_path << "\n";
             try {
                 return file_manager.read_file(abs_path, rel_path);
             } catch (const std::ifstream::failure&) {
@@ -678,48 +694,49 @@ class t_preprocessor {
         if (not command("include")) {
             return false;
         }
-        // _ arg_loc = (*pos).loc;
-        // _ end = find_newline(pos);
-        // constrain((*pos).kind != "newline",
-        //           "expected <filename> or \"filename\"", arg_loc);
-        // if ((*next(end, -1)).kind == "whitespace") {
-        //     end--;
-        // }
-        // pos = expand(lex_seq, pos, end, macros);
-        // str val;
-        // for (_ it = pos; it != end; it++) {
-        //     val += (*it).val;
-        // }
-        // constrain(((val[0] == '<' and val.back() == '>')
-        //            or (val[0] == '"' and val.back() == '"')),
-        //           "expected <filename> or \"filename\"", arg_loc);
-        // const _ rel_path = unwrap(val);
-        // _ file_idx = size_t(-1);
-        // if (val[0] == '"') {
-        //     _ cur_path = file_manager.get_abs_path(arg_loc.file_idx());
-        //     file_idx = include_search({get_file_dir(cur_path)}, rel_path);
-        // }
-        // if (file_idx == size_t(-1)) {
-        //     _ dirs = vec<str>{
-        //         "/usr/local/include",
-        //         get_abs_path(".") + "/include",
-        //         "/usr/include/x86_64-linux-gnu",
-        //         "/include",
-        //         "/usr/include",
-        //     };
-        //     file_idx = include_search(dirs, rel_path);
-        //     constrain(file_idx != size_t(-1),
-        //               "could not open " + rel_path, arg_loc);
-        // }
+        _ arg_loc = (*pos).loc;
+        _ end = find_newline(pos);
+        constrain((*pos).kind != "newline",
+                  "expected <filename> or \"filename\"", arg_loc);
+        if ((*next(end, -1)).kind == "whitespace") {
+            end--;
+        }
+        pos = expand(lex_seq, pos, end, macros);
+        str val;
+        for (_ it = pos; it != end; it++) {
+            val += (*it).val;
+        }
+        constrain(((val[0] == '<' and val.back() == '>')
+                   or (val[0] == '"' and val.back() == '"')),
+                  "expected <filename> or \"filename\"", arg_loc);
+        const _ rel_path = unwrap(val);
+        _ file_idx = size_t(-1);
+        if (val[0] == '"') {
+            _ cur_path = file_manager.get_abs_path(arg_loc.file_idx());
+            file_idx = include_search({get_file_dir(cur_path)}, rel_path);
+        }
+        if (file_idx == size_t(-1)) {
+            _ dirs = vec<str>{
+                "/usr/local/include",
+                get_abs_path(".") + "/include",
+                "/usr/include/x86_64-linux-gnu",
+                "/include",
+                "/usr/include",
+            };
+            file_idx = include_search(dirs, rel_path);
+            constrain(file_idx != size_t(-1),
+                      "could not open " + rel_path, arg_loc);
+            // cout << "incl " << file_manager.get_abs_path(file_idx) << "\n";
+        }
         skip_until_next_line();
-        // _ pp_ls = lex(file_idx, file_manager);
-        // assert(not pp_ls.empty() and pp_ls.back().kind == "eof");
-        // pp_ls.pop_back();
-        // if (not pp_ls.empty()) {
-        //     _ inc_start = pp_ls.begin();
-        //     lex_seq.splice(pos, pp_ls);
-        //     pos = inc_start;
-        // }
+        _ pp_ls = lex(file_idx, file_manager);
+        assert(not pp_ls.empty() and pp_ls.back().kind == "eof");
+        pp_ls.pop_back();
+        if (not pp_ls.empty()) {
+            _ inc_start = pp_ls.begin();
+            lex_seq.splice(pos, pp_ls);
+            pos = inc_start;
+        }
         return true;
     }
 
@@ -866,6 +883,26 @@ class t_preprocessor {
         while (group_part()) {
         }
     }
+
+    void kill_consecutive_blank_lines() {
+        _ it = lex_seq.begin();
+        _ last_line_empty = false;
+        while ((*it).kind != "eof") {
+            if (last_line_empty and (*it).kind == "newline") {
+                it = lex_seq.erase(it);
+            } else {
+                if ((*it).kind == "newline") {
+                    last_line_empty = true;
+                } else {
+                    while ((*it).kind != "newline") {
+                        it++;
+                    }
+                    last_line_empty = false;
+                }
+                it++;
+            }
+        }
+    }
 public:
     t_preprocessor(t_pp_seq& ls, t_file_manager& file_manager_)
         : lex_seq(ls)
@@ -877,6 +914,7 @@ public:
     void scan() {
         group();
         expect("eof", pos);
+        kill_consecutive_blank_lines();
     }
 };
 

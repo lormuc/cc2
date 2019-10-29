@@ -75,8 +75,9 @@ public:
     str func_param(const str&);
     void end_func();
     void func_internal(bool);
-    void declare(const str& ret_type, const str& name, vec<str> params);
-    void declare_external(const str& name, const str& type);
+    void declare(const str& ret_type, const str& name, vec<str> params,
+                 bool is_variadic = false);
+    str declare_external(const str& name, const str& type);
     str def_static_val(const str&);
     str def_global(const str& name, const str& val, bool _internal);
 };

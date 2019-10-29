@@ -460,21 +460,7 @@ namespace {
         } else if (op == "char_constant") {
             res = t_val(int(ast.vv[0]));
         } else if (op == "identifier") {
-            if (ast.vv == "printf") {
-                _ tp = make_func_type(int_type, {string_type}, true);
-                res = t_val(str("@printf"), tp);
-            } else if (ast.vv == "snprintf") {
-                _ tp = make_func_type(int_type,
-                                      {string_type, size_t_type, string_type},
-                                      true);
-                res = t_val(str("@snprintf"), tp);
-            } else if (ast.vv == "calloc") {
-                _ tp = make_func_type(void_pointer_type,
-                                      {size_t_type, size_t_type});
-                res = t_val(str("@calloc"), tp);
-            } else {
-                res = ctx.get_id_data(ast.vv).val;
-            }
+            res = ctx.get_id_data(ast.vv).val;
         } else if (op == "un_plus" and arg_cnt == 1) {
             res = exp(ast[0], ctx);
             if (not res.type().is_arithmetic()) {
