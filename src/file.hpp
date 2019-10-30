@@ -23,3 +23,4 @@ public:
 
 str get_file_dir(const str&);
 str get_abs_path(const str&);
+str replace_extension(const str&, const str&);

@@ -1,3 +1,5 @@
+#include <cctype>
+
 #include "misc.hpp"
 
 _ hex_digit(int x) {
@@ -10,7 +12,7 @@ _ hex_digit(int x) {
 
 void print_bytes(const str& s, std::ostream& os) {
     for (_& ch : s) {
-        if (isprint(ch) and ch != '"' and ch != '\\') {
+        if (std::isprint(ch) and ch != '"' and ch != '\\') {
             os << ch;
         } else {
             os << "\\";

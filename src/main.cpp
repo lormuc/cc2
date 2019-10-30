@@ -71,18 +71,6 @@ _ die(const str& msg) {
     return 0;
 }
 
-_ separator(std::ostream& os) {
-    os << "\n";
-    os << "-------------\n";
-    os << "\n";
-}
-
-_ title(const str& x, std::ostream& os) {
-    os << "\n";
-    os << x << ":\n";
-    os << "\n";
-}
-
 _ concatenate_string_literals(std::list<t_pp_lexeme>& ls) {
     _ it = ls.begin();
     while ((*it).kind != "eof") {
@@ -105,22 +93,51 @@ _ concatenate_string_literals(std::list<t_pp_lexeme>& ls) {
     }
 }
 
-int main(int argc, char** argv) {
-    _ log = std::ofstream("log.txt");
+namespace {
+    _ usage() {
+        cout << "usage: ./build/program [option] <input-file>\n";
+        cout << "options:\n";
+        cout << "--lex        print the preprocessing tokens\n";
+        cout << "--pp         print the preprocessed source file\n";
+        cout << "--pre-ast    print the tokens after preprocessing\n";
+        cout << "--ast        print the abstract syntax tree\n";
+        cout << "-o <file>    place the llvm output into <file>\n";
+    }
+}
 
+int main(int argc, char** argv) {
     str input_file;
-    str output_file = "o.ll";
-    _ phase = -1;
+    str output_file;
+    str end_phase;
     if (argc == 2) {
         input_file = argv[1];
-    } else if (argc == 3 and argv[1][0] == '-') {
-        phase = stoi(str(argv[1]).substr(1));
-        input_file = argv[2];
+        output_file = replace_extension(argv[1], ".ll");
     } else if (argc == 3) {
-        input_file = argv[1];
-        output_file = argv[2];
+        _ option = str(argv[1]);
+        if (option == "--lex") {
+            end_phase = "lex";
+        } else if (option == "--pp") {
+            end_phase = "pp";
+        } else if (option == "--pre-ast") {
+            end_phase = "pre-ast";
+        } else if (option == "--ast") {
+            end_phase = "ast";
+        } else {
+            usage();
+            return 1;
+        }
+        input_file = argv[2];
+    } else if (argc == 4) {
+        if (str(argv[1]) == "-o") {
+            output_file = argv[2];
+            input_file = argv[3];
+        } else {
+            usage();
+            return 1;
+        }
     } else {
-        die("incorrect usage");
+        usage();
+        return 1;
     }
 
     _ fm = t_file_manager();
@@ -128,50 +145,26 @@ int main(int argc, char** argv) {
     try {
         input_file_idx = fm.read_file(input_file);
     } catch (const std::exception& e) {
-        die(input_file + ": " + e.what());
+        die("could not open " + input_file);
     }
 
     try {
-        _ phase_cnt = 0;
-
-        title("lex", log);
         _ pp_ls = lex(input_file_idx, fm);
-        phase_cnt++;
-        print(pp_ls, log);
-        separator(log);
-        if (phase_cnt == phase) {
+        if (end_phase == "lex") {
             print(pp_ls, cout);
-            cout << "\n";
             return 0;
         }
 
-        title("preprocess", log);
         preprocess(pp_ls, fm);
-        phase_cnt++;
-        print(pp_ls, log);
-        separator(log);
-        if (phase_cnt == phase) {
+        if (end_phase == "pp") {
             print(pp_ls, cout);
-            cout << "\n";
             return 0;
         }
 
         escape_seqs(pp_ls.begin(), pp_ls.end());
         concatenate_string_literals(pp_ls);
-        // phase_cnt++;
-        // if (phase_cnt == phase) {
-        //     print(pp_ls, cout);
-        //     cout << "\n";
-        //     return 0;
-        // }
 
         _ ls = convert_lexemes(pp_ls.begin(), pp_ls.end());
-        phase_cnt++;
-        if (phase_cnt == phase) {
-            print(ls, cout);
-            cout << "\n";
-            return 0;
-        }
 
         for (_ it = ls.begin(); (*it).uu != "eof";) {
             if ((*it).uu == "const" or (*it).uu == "volatile") {
@@ -181,19 +174,20 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (end_phase == "pre-ast") {
+            print(ls, cout);
+            return 0;
+        }
+
         _ ast = parse_program(ls.cbegin());
-        phase_cnt++;
-        title("ast", log);
-        print(ast, log);
-        if (phase_cnt == phase) {
+        if (end_phase == "ast") {
             print(ast, cout);
-            cout << "\n";
             return 0;
         }
 
         _ res = gen_asm(ast);
         _ os = std::ofstream(output_file);
-        os.good() or die("could not open output file");
+        os.good() or die("could not open output file" + output_file);
         os << res;
     } catch (const t_compile_error& e) {
         _ src = fm.get_file_contents(e.loc().file_idx());

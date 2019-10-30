@@ -2,6 +2,7 @@
 #include <unordered_set>
 #include <cassert>
 #include <ctime>
+#include <fstream>
 
 #include "pp.hpp"
 #include "ast.hpp"

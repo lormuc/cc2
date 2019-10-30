@@ -11,7 +11,7 @@ failure_cnt = 0
 def run_my_cc(_file):
     with TemporaryDirectory() as temp_dir:
         llvm = os.path.join(temp_dir, "llvm")
-        t = subprocess.run([my_cc, _file, llvm], capture_output=True)
+        t = subprocess.run([my_cc, "-o", llvm, _file], capture_output=True)
         if t.returncode == 0:
             w = subprocess.run(["lli", llvm], capture_output=True)
             return (w.returncode, w.stdout)

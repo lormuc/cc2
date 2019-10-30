@@ -1,5 +1,6 @@
 #include <cassert>
 #include <istream>
+#include <fstream>
 #include <experimental/filesystem>
 
 #include "file.hpp"
@@ -50,4 +51,11 @@ str get_abs_path(const str& path) {
 
 str get_file_dir(const str& abs_path) {
     return fs::path(abs_path).parent_path().string();
+}
+
+str replace_extension(const str& path, const str& new_ext) {
+    _ p = fs::path(path);
+    p = (p.parent_path() / p.stem());
+    p += new_ext;
+    return p.string();
 }
