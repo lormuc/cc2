@@ -62,11 +62,6 @@ public:
     void advance(int n = 1) {
         if ((*pos).uu != "eof") {
             std::advance(pos, n);
-            if (n == 1) {
-                while ((*pos).uu == "const" or (*pos).uu == "volatile") {
-                    pos++;
-                }
-            }
         }
     }
     str cur_rule() const {
@@ -367,8 +362,8 @@ namespace {
             if (only_check) {
                 return true;
             }
-            advance();
             ctx.add_leaf(kind, val);
+            advance();
             return true;
         } else {
             return false;

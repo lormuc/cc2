@@ -85,18 +85,15 @@ _ title(const str& x, std::ostream& os) {
 
 _ concatenate_string_literals(std::list<t_pp_lexeme>& ls) {
     _ it = ls.begin();
-    while (it != ls.end()) {
+    while ((*it).kind != "eof") {
         if ((*it).kind == "string_literal") {
             while (true) {
                 _ jt = it;
                 jt++;
-                if (jt == ls.end()) {
-                    break;
-                }
-                if ((*jt).kind == "whitespace") {
+                while ((*jt).kind == "whitespace" or (*jt).kind == "newline") {
                     jt++;
                 }
-                if (jt == ls.end() or (*jt).kind != "string_literal") {
+                if ((*jt).kind != "string_literal") {
                     break;
                 }
                 (*it).val.pop_back();
@@ -176,6 +173,14 @@ int main(int argc, char** argv) {
             return 0;
         }
 
+        for (_ it = ls.begin(); (*it).uu != "eof";) {
+            if ((*it).uu == "const" or (*it).uu == "volatile") {
+                it = ls.erase(it);
+            } else {
+                it++;
+            }
+        }
+
         _ ast = parse_program(ls.cbegin());
         phase_cnt++;
         title("ast", log);
@@ -206,8 +211,12 @@ int main(int argc, char** argv) {
                 std::cerr << src[j];
             }
             std::cerr << "\n";
-            for (_ j = 0; j < loc.column(); j++) {
-                std::cerr << " ";
+            for (_ j = i; j < i + loc.column(); j++) {
+                if (src[j] == ' ' or src[j] == '\t') {
+                    std::cerr << src[j];
+                } else {
+                    std::cerr << " ";
+                }
             }
             std::cerr << "^";
             std::cerr << "\n";

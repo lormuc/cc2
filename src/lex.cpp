@@ -332,6 +332,15 @@ public:
             push("newline", "\n");
         }
         push("eof", "");
+        for (_ it = result.begin(); (*it).kind != "eof";) {
+            if ((*it).val == "L"
+                and ((*next(it)).val[0] == '\''
+                     or ((*next(it)).val[0] == '"'))) {
+                it = result.erase(it);
+            } else {
+                it++;
+            }
+        }
     }
     std::list<t_pp_lexeme> get_result() {
         return std::move(result);

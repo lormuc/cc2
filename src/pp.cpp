@@ -252,7 +252,7 @@ namespace {
     }
 
     _ is_eof(_ i) {
-        return (*i).val == "";
+        return (*i).kind == "eof";
     }
 
     _ skip_ws(_ i, _ fin) {
@@ -325,16 +325,23 @@ namespace {
         while (true) {
             constrain(j != finish, "unmatched (", loc);
             _& lx = (*j).kind;
-            if (lx == ")" and paren_cnt == 0) {
-                if (not arg.empty()) {
+            if (paren_cnt == 0) {
+                if (lx == "," or lx == ")") {
+                    if (arg.empty()) {
+                        _ pm = t_pp_lexeme{"placemarker", "", (*j).loc};
+                        arg.push_back(pm);
+                    } else if (arg.size() == 1
+                               and arg.front().kind == "whitespace") {
+                        _ pm = t_pp_lexeme{"placemarker", "", arg.front().loc};
+                        arg.clear();
+                        arg.push_back(pm);
+                    }
                     res.push_back(arg);
                     arg.clear();
                 }
-                break;
-            }
-            if (paren_cnt == 0 and lx == ",") {
-                res.push_back(arg);
-                arg.clear();
+                if (lx == ")") {
+                    break;
+                }
             }
             if (lx == "(") {
                 paren_cnt++;
@@ -384,7 +391,11 @@ namespace {
                               std::inserter(hs, hs.begin()));
         x.hide_set = hs;
         x.val += y.val;
-        x.kind = pp_kind(x.val);
+        if (x.val == "") {
+            x.kind = "placemarker";
+        } else {
+            x.kind = pp_kind(x.val);
+        }
         rs.pop_front();
         ls.splice(ls.end(), rs);
     }
@@ -399,11 +410,14 @@ namespace {
         assert(not ls.empty());
         str val;
         val += "\"";
-        for (_& lx : ls) {
-            if (lx.kind == "char_constant" or lx.kind == "string_literal") {
-                val += str_lit(lx.val);
-            } else {
-                val += lx.val;
+        if (ls.front().kind != "placemarker") {
+            for (_& lx : ls) {
+                if (lx.kind == "char_constant"
+                    or lx.kind == "string_literal") {
+                    val += str_lit(lx.val);
+                } else {
+                    val += lx.val;
+                }
             }
         }
         val += "\"";
@@ -506,6 +520,10 @@ namespace {
             }
             j++;
             _ args = collect_args(j, finish);
+            if (macro.params.size() == 0 and args.size() == 1
+                and args.front().front().kind == "placemarker") {
+                args.clear();
+            }
             constrain(macro.params.size() == args.size(),
                       "wrong number of arguments", (*i).loc);
             _& rparen_hs = (*j).hide_set;
@@ -519,6 +537,13 @@ namespace {
             _& mr = macro.replacement;
             substitute(mr.begin(), mr.end(), macro.params, args, nhs, r,
                        macros);
+            for (_ m = r.begin(); m != r.end();) {
+                if ((*m).kind == "placemarker") {
+                    m = r.erase(m);
+                } else {
+                    m++;
+                }
+            }
             i = ls.erase(i, j);
             i = ls.insert(i, r.begin(), r.end());
             expand(ls, i, finish, macros);

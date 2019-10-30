@@ -460,7 +460,11 @@ namespace {
         } else if (op == "char_constant") {
             res = t_val(int(ast.vv[0]));
         } else if (op == "identifier") {
-            res = ctx.get_id_data(ast.vv).val;
+            try {
+                res = ctx.get_id_data(ast.vv).val;
+            } catch (t_undefined_name_error) {
+                err("undefined name", ast.loc);
+            }
         } else if (op == "un_plus" and arg_cnt == 1) {
             res = exp(ast[0], ctx);
             if (not res.type().is_arithmetic()) {
