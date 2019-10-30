@@ -352,9 +352,12 @@ namespace {
         _ loop_body = make_label();
         ctx.break_label(make_label());
         ctx.loop_body_end(make_label());
-        _ init_exp = ast[0];
-        if (not init_exp.children.empty()) {
-            gen_exp(init_exp[0], ctx);
+        if (ast[0].uu == "declaration") {
+            gen_declaration(ast[0], ctx);
+        } else {
+            if (not ast[0].children.empty()) {
+                gen_exp(ast[0][0], ctx);
+            }
         }
         put_label(loop_begin);
         _& ctrl_exp = ast[1];

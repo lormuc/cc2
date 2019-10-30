@@ -730,7 +730,8 @@ namespace {
     def(opt_exp,
         opt(exp));
     def(for_stmt,
-        "for", "(", opt_exp, ";", opt_exp, ";", opt_exp, ")", stmt);
+        "for", "(", bar(declaration, __(opt_exp, ";")),
+        opt_exp, ";", opt_exp, ")", stmt);
     def(break_stmt,
         "break", ";");
     def(continue_stmt,

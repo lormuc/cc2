@@ -147,10 +147,21 @@ class t_lexer {
         }
     }
     bool compare(const str& x) {
-        return src.compare(idx, x.length(), x) == 0;
+        _ old_idx = idx;
+        _ old_loc = cur_loc;
+        _ success = true;
+        for (_ ch : x) {
+            if (end() or peek() != ch) {
+                success = false;
+            }
+            advance();
+        }
+        idx = old_idx;
+        cur_loc = old_loc;
+        return success;
     }
     bool match(const str& x) {
-        if (src.compare(idx, x.length(), x) == 0) {
+        if (compare(x)) {
             advance(x.length());
             return true;
         } else {
@@ -253,23 +264,33 @@ class t_lexer {
             push("newline", advance());
             in_include = false;
             return true;
-        } else if (is_whitespace(peek())) {
+        } else if ((is_whitespace(peek()) and peek() != '\n')
+                   or compare("/*") or compare("//")) {
             str val;
             while (true) {
-                val += advance();
-                if (not is_whitespace(peek()) or peek() == '\n') {
+                if (match("/*")) {
+                    while (not match("*/")) {
+                        if (end()) {
+                            err("unterminated comment");
+                        }
+                        advance();
+                    }
+                    val += ' ';
+                } else if (match("//")) {
+                    while (peek() != '\n') {
+                        if (end()) {
+                            err("unterminated comment");
+                        }
+                        advance();
+                    }
+                    val += ' ';
+                } else if (is_whitespace(peek()) and peek() != '\n') {
+                    val += advance();
+                } else {
                     break;
                 }
             }
             push("whitespace", val);
-            return true;
-        } else if (match("/*")) {
-            while (not match("*/")) {
-                if (end()) {
-                    err("unterminated comment");
-                }
-                advance();
-            }
             return true;
         } else {
             return false;
