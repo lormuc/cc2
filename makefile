@@ -11,7 +11,7 @@ c_flags = \
 obj := $(patsubst src/%$(ext), build/%.o, $(wildcard src/*$(ext)))
 hdr = $(wildcard src/*$(hdr_ext))
 
-all: $(target)
+all : $(target)
 
 $(obj) : build/%.o: src/%$(ext) $(hdr)
 	mkdir -p build/
@@ -26,6 +26,6 @@ clean :
 	rm -rf build/
 
 test :
-	python3.7 test.py tests/
+	python3 test.py tests/
 
 .PHONY : all clean test

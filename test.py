@@ -1,4 +1,5 @@
 import subprocess
+from subprocess import PIPE
 from tempfile import TemporaryDirectory
 import os
 import sys
@@ -11,9 +12,10 @@ failure_cnt = 0
 def run_my_cc(_file):
     with TemporaryDirectory() as temp_dir:
         llvm = os.path.join(temp_dir, "llvm")
-        t = subprocess.run([my_cc, "-o", llvm, _file], capture_output=True)
+        t = subprocess.run([my_cc, "-o", llvm, _file],
+                           stdout=PIPE, stderr=PIPE)
         if t.returncode == 0:
-            w = subprocess.run(["lli", llvm], capture_output=True)
+            w = subprocess.run(["lli", llvm], stdout=PIPE, stderr=PIPE)
             return (w.returncode, w.stdout)
         else:
             return None
@@ -22,9 +24,9 @@ def run_cc(_file):
     with TemporaryDirectory() as temp_dir:
         cc_out = os.path.join(temp_dir, "cc_out")
         t = subprocess.run(["gcc", _file, "-o", cc_out],
-                           capture_output=True)
+                           stdout=PIPE, stderr=PIPE)
         if t.returncode == 0:
-            w = subprocess.run([cc_out], capture_output=True)
+            w = subprocess.run([cc_out], stdout=PIPE, stderr=PIPE)
             return (w.returncode, w.stdout)
         else:
             return None

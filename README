@@ -1,9 +1,17 @@
-Build
+This program translates a C89 file into LLVM's intermediate representation.
+
+Requirements:
+    x86_64 linux
+    g++ >= 7.4.0
+    llvm >= 6.0
+    python >= 3.6 is needed by the test script
+
+How to build:
     make
 
-Run
-    ./build/program input.c llvm.ll
-    lli llvm.ll
+How to run:
+    ./build/program -o <output-file.ll> <input-file.c>
+    lli <output-file.ll>
 
-Test
-    python3.7 test.py tests/
+How to run tests:
+    make test
